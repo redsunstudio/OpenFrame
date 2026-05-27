@@ -204,9 +204,10 @@ export function useVideoPlayer({
     if (!activeProviderId) return;
     const isYoutube = activeProviderId === 'youtube';
     const isBunny = activeProviderId === 'bunny';
+    const isR2 = activeProviderId === 'r2';
 
     if (isYoutube && !isApiLoaded) return;
-    if (!isYoutube && !isBunny) return;
+    if (!isYoutube && !isBunny && !isR2) return;
 
     const currentVersionKey = `${activeProviderId ?? 'none'}:${activeVersionId ?? 'none'}`;
     const versionChanged = previousVersionKeyRef.current !== currentVersionKey;
@@ -623,6 +624,132 @@ export function useVideoPlayer({
             videoEl.load();
           },
         };
+      } else if (isR2) {
+        const videoEl = videoRef.current;
+        if (!videoEl) return;
+
+        let cachedDuration = 0;
+        let destroyed = false;
+
+        const syncDuration = () => {
+          if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) {
+            cachedDuration = videoEl.duration;
+            setVideoDuration(videoEl.duration);
+          }
+        };
+
+        const saveProgress = () => {
+          const current = videoEl.currentTime || 0;
+          const duration =
+            Number.isFinite(videoEl.duration) && videoEl.duration > 0
+              ? videoEl.duration
+              : cachedDuration;
+          scheduleWatchProgressSaveRef.current({
+            progress: current,
+            duration,
+            immediate: true,
+            force: true,
+          });
+        };
+
+        const onLoadedMetadata = () => {
+          if (destroyed) return;
+          setBunnyPlaybackState('none');
+          if (videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+            setIsBunnyPortraitSource(videoEl.videoHeight > videoEl.videoWidth);
+          }
+          setIsReady(true);
+          syncDuration();
+          if (!videoEl.paused) {
+            startBunnyFrameTracking();
+          }
+        };
+
+        const onPlay = () => {
+          setIsPlaying(true);
+          setBunnyPlaybackState('none');
+          syncDuration();
+          startBunnyFrameTracking();
+        };
+
+        const onPause = () => {
+          setIsPlaying(false);
+          stopBunnyFrameTracking();
+          saveProgress();
+        };
+
+        const onEnded = () => {
+          setIsPlaying(false);
+          stopBunnyFrameTracking();
+          saveProgress();
+        };
+
+        const onTimeUpdate = () => {
+          if (!isDraggingRef.current) {
+            setCurrentTime(videoEl.currentTime || 0);
+          }
+          syncDuration();
+        };
+
+        const onVideoError = () => {
+          if (destroyed) return;
+          setBunnyPlaybackState('error');
+        };
+
+        videoEl.addEventListener('loadedmetadata', onLoadedMetadata);
+        videoEl.addEventListener('play', onPlay);
+        videoEl.addEventListener('pause', onPause);
+        videoEl.addEventListener('ended', onEnded);
+        videoEl.addEventListener('timeupdate', onTimeUpdate);
+        videoEl.addEventListener('error', onVideoError);
+
+        const playbackSrc =
+          embedUrl.startsWith('/') && typeof window !== 'undefined'
+            ? `${window.location.origin}${embedUrl}`
+            : embedUrl;
+        videoEl.src = playbackSrc;
+        videoEl.load();
+
+        playerRef.current = {
+          playVideo: () => {
+            videoEl.play().catch((err) => console.error('Error playing video:', err));
+          },
+          pauseVideo: () => videoEl.pause(),
+          seekTo: (time: number) => {
+            videoEl.currentTime = time;
+          },
+          mute: () => {
+            videoEl.muted = true;
+          },
+          unMute: () => {
+            videoEl.muted = false;
+          },
+          isMuted: () => videoEl.muted,
+          getCurrentTime: () => videoEl.currentTime || 0,
+          getDuration: () => {
+            if (Number.isFinite(videoEl.duration) && videoEl.duration > 0) return videoEl.duration;
+            return cachedDuration;
+          },
+          getPlayerState: () =>
+            videoEl.paused
+              ? (window.YT?.PlayerState?.PAUSED ?? 2)
+              : (window.YT?.PlayerState?.PLAYING ?? 1),
+          setPlaybackRate: (rate: number) => {
+            videoEl.playbackRate = rate;
+          },
+          destroy: () => {
+            destroyed = true;
+            stopBunnyFrameTracking();
+            videoEl.removeEventListener('loadedmetadata', onLoadedMetadata);
+            videoEl.removeEventListener('play', onPlay);
+            videoEl.removeEventListener('pause', onPause);
+            videoEl.removeEventListener('ended', onEnded);
+            videoEl.removeEventListener('timeupdate', onTimeUpdate);
+            videoEl.removeEventListener('error', onVideoError);
+            videoEl.removeAttribute('src');
+            videoEl.load();
+          },
+        };
       }
     };
 
@@ -633,7 +760,7 @@ export function useVideoPlayer({
         } else {
           window.onYouTubeIframeAPIReady = initPlayer;
         }
-      } else if (isBunny) {
+      } else if (isBunny || isR2) {
         initPlayer();
       }
     }, 100);

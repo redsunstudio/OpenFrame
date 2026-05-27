@@ -26,6 +26,8 @@ import {
   type VideoSource,
 } from '@/lib/video-providers';
 import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { cleanupPendingR2VideoUpload, uploadVideoToR2 } from '@/lib/client/r2-video-upload';
+import type { DirectUploadProvider } from '@/components/video-page/types';
 import * as tus from 'tus-js-client';
 
 const VIDEO_FILE_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'mkv'];
@@ -38,10 +40,12 @@ function isVideoFile(file: File): boolean {
 
 export default function NewVideoPageClient({
   projectId,
-  bunnyUploadsEnabled,
+  directUploadsEnabled,
+  directUploadProvider,
 }: {
   projectId: string;
-  bunnyUploadsEnabled: boolean;
+  directUploadsEnabled: boolean;
+  directUploadProvider: DirectUploadProvider;
 }) {
   const router = useRouter();
   const bunnyCdnHostname = resolvePublicBunnyCdnHostname();
@@ -64,6 +68,9 @@ export default function NewVideoPageClient({
   const [pendingBunnyUploadToken, setPendingBunnyUploadToken] = useState<string | null>(null);
   const pendingBunnyVideoIdRef = useRef<string | null>(null);
   const pendingBunnyUploadTokenRef = useRef<string | null>(null);
+  const pendingR2ObjectKeyRef = useRef<string | null>(null);
+  const pendingR2UploadTokenRef = useRef<string | null>(null);
+  const pendingR2ReservationIdRef = useRef<string | null>(null);
   const activeTusUploadRef = useRef<tus.Upload | null>(null);
   const fileDragDepthRef = useRef(0);
 
@@ -394,7 +401,7 @@ export default function NewVideoPageClient({
         finalThumbnailUrl = getThumbnailUrl(videoSource, 'large');
         finalDuration = videoSource.metadata?.duration || null;
       } else {
-        if (!bunnyUploadsEnabled) {
+        if (!directUploadsEnabled) {
           throw new Error('Direct uploads are disabled by this host');
         }
 
@@ -405,22 +412,37 @@ export default function NewVideoPageClient({
         }
         finalTitle = finalTitle || selectedFile.name;
 
-        // Handle TUS Upload
-        const bunnyData = await uploadToBunny(selectedFile);
-        uploadedBunnyVideoId = bunnyData.videoId;
-        uploadedBunnyUploadToken = bunnyData.uploadToken;
+        if (directUploadProvider === 'r2') {
+          const r2Data = await uploadVideoToR2(projectId, selectedFile, {
+            onProgress: (progress) => {
+              setUploadProgress(progress);
+              setUploadStatus(`Uploading... ${progress}%`);
+            },
+          });
+          pendingR2ObjectKeyRef.current = r2Data.objectKey;
+          pendingR2UploadTokenRef.current = r2Data.uploadToken;
+          pendingR2ReservationIdRef.current = r2Data.reservationId;
 
-        finalVideoUrl = bunnyData.url;
-        finalProviderId = bunnyData.providerId;
-        finalVideoId = bunnyData.videoId;
-        // Bunny will generate thumbnails automatically after processing.
-        // We'll just provide the standard CDN thumbnail URL format as fallback.
-        finalThumbnailUrl = bunnyCdnHostname
-          ? `https://${bunnyCdnHostname}/${bunnyData.videoId}/thumbnail.jpg`
-          : null;
+          finalVideoUrl = r2Data.proxyUrl;
+          finalProviderId = 'r2';
+          finalVideoId = r2Data.objectKey;
+          finalThumbnailUrl = r2Data.thumbnailUrl || '/placeholder-video-thumbnail.png';
+          finalDuration = r2Data.duration;
+          uploadedBunnyUploadToken = r2Data.uploadToken;
+        } else {
+          const bunnyData = await uploadToBunny(selectedFile);
+          uploadedBunnyVideoId = bunnyData.videoId;
+          uploadedBunnyUploadToken = bunnyData.uploadToken;
+
+          finalVideoUrl = bunnyData.url;
+          finalProviderId = bunnyData.providerId;
+          finalVideoId = bunnyData.videoId;
+          finalThumbnailUrl = bunnyCdnHostname
+            ? `https://${bunnyCdnHostname}/${bunnyData.videoId}/thumbnail.jpg`
+            : null;
+        }
       }
 
-      // Final POST to our database
       const response = await fetch(`/api/projects/${projectId}/videos`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -433,6 +455,8 @@ export default function NewVideoPageClient({
           thumbnailUrl: finalThumbnailUrl,
           duration: finalDuration,
           uploadToken: uploadedBunnyUploadToken,
+          objectKey: pendingR2ObjectKeyRef.current,
+          reservationId: pendingR2ReservationIdRef.current,
         }),
       });
 
@@ -441,12 +465,21 @@ export default function NewVideoPageClient({
         setSubmitError(data.error || 'Failed to add video');
         if (uploadedBunnyVideoId && uploadedBunnyUploadToken) {
           await cleanupPendingBunnyVideo(uploadedBunnyVideoId, uploadedBunnyUploadToken);
+        } else if (pendingR2ObjectKeyRef.current && pendingR2UploadTokenRef.current) {
+          await cleanupPendingR2VideoUpload(projectId, {
+            objectKey: pendingR2ObjectKeyRef.current,
+            uploadToken: pendingR2UploadTokenRef.current,
+            reservationId: pendingR2ReservationIdRef.current,
+          });
         }
         return;
       }
 
       pendingBunnyVideoIdRef.current = null;
       pendingBunnyUploadTokenRef.current = null;
+      pendingR2ObjectKeyRef.current = null;
+      pendingR2UploadTokenRef.current = null;
+      pendingR2ReservationIdRef.current = null;
       setPendingBunnyVideoId(null);
       setPendingBunnyUploadToken(null);
       router.push(`/projects/${projectId}`);
@@ -458,6 +491,12 @@ export default function NewVideoPageClient({
           pendingBunnyVideoIdRef.current,
           pendingBunnyUploadTokenRef.current
         );
+      } else if (pendingR2ObjectKeyRef.current && pendingR2UploadTokenRef.current) {
+        await cleanupPendingR2VideoUpload(projectId, {
+          objectKey: pendingR2ObjectKeyRef.current,
+          uploadToken: pendingR2UploadTokenRef.current,
+          reservationId: pendingR2ReservationIdRef.current,
+        });
       }
     } finally {
       activeTusUploadRef.current = null;
@@ -492,7 +531,7 @@ export default function NewVideoPageClient({
         <CardHeader>
           <CardTitle>Add Video</CardTitle>
           <CardDescription>
-            {bunnyUploadsEnabled
+            {directUploadsEnabled
               ? 'Paste a video link or upload a file directly to add it to your project. Currently supports YouTube.'
               : 'Paste a video link to add it to your project. Direct uploads are disabled on this host.'}
           </CardDescription>
@@ -504,12 +543,12 @@ export default function NewVideoPageClient({
             className="mb-6"
           >
             <TabsList
-              className={`grid w-full ${bunnyUploadsEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}
+              className={`grid w-full ${directUploadsEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}
             >
               <TabsTrigger value="url" disabled={isLoading}>
                 Paste URL
               </TabsTrigger>
-              {bunnyUploadsEnabled ? (
+              {directUploadsEnabled ? (
                 <TabsTrigger value="file" disabled={isLoading}>
                   Direct Upload
                 </TabsTrigger>

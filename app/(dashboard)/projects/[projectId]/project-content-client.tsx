@@ -21,6 +21,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { VideoCard } from '@/components/video-card';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
+import type { DirectUploadProvider } from '@/components/video-page/types';
 
 interface SerializedVideo {
   id: string;
@@ -48,6 +49,8 @@ interface ProjectContentClientProps {
   workspaceRole: string | null;
   totalPages: number;
   currentPage: number;
+  directUploadsEnabled: boolean;
+  directUploadProvider: DirectUploadProvider;
 }
 
 export function ProjectContentClient({
@@ -58,6 +61,8 @@ export function ProjectContentClient({
   isOwner,
   totalPages,
   currentPage,
+  directUploadsEnabled,
+  directUploadProvider,
 }: ProjectContentClientProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -91,7 +96,8 @@ export function ProjectContentClient({
       <VideoDragDropUploader
         fixedProjectId={projectId}
         fixedProjectName={project.name}
-        canUpload={canEdit}
+        canUpload={canEdit && directUploadsEnabled}
+        directUploadProvider={directUploadProvider}
       />
 
       {/* Project Header */}

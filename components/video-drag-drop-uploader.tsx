@@ -22,6 +22,8 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { cleanupPendingR2VideoUpload, uploadVideoToR2 } from '@/lib/client/r2-video-upload';
+import type { DirectUploadProvider } from '@/components/video-page/types';
 
 type ProjectOption = {
   id: string;
@@ -35,6 +37,7 @@ interface VideoDragDropUploaderProps {
   workspaceId?: string;
   projectOptions?: ProjectOption[];
   canUpload?: boolean;
+  directUploadProvider?: DirectUploadProvider;
 }
 
 const VIDEO_FILE_EXTENSIONS = ['mp4', 'webm', 'ogg', 'mov', 'm4v', 'mkv'];
@@ -68,6 +71,7 @@ export function VideoDragDropUploader({
   workspaceId,
   projectOptions,
   canUpload = false,
+  directUploadProvider = 'bunny',
 }: VideoDragDropUploaderProps) {
   const router = useRouter();
 
@@ -86,11 +90,23 @@ export function VideoDragDropUploader({
   );
 
   const activeTusUploadRef = useRef<ActiveTusUpload | null>(null);
-  const pendingUploadRef = useRef<{
-    projectId: string;
-    videoId: string;
-    uploadToken: string;
-  } | null>(null);
+  const pendingUploadRef = useRef<
+    | {
+        type: 'bunny';
+        projectId: string;
+        videoId: string;
+        uploadToken: string;
+      }
+    | {
+        type: 'r2';
+        projectId: string;
+        objectKey: string;
+        uploadToken: string;
+        reservationId: string | null;
+        thumbnailObjectKey?: string;
+      }
+    | null
+  >(null);
   const cancelRequestedRef = useRef(false);
   const dragDepthRef = useRef(0);
   const hasLoadedProjectsRef = useRef(false);
@@ -205,11 +221,20 @@ export function VideoDragDropUploader({
 
     if (pending) {
       try {
-        await fetch(`/api/projects/${pending.projectId}/videos/bunny-init`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ videoId: pending.videoId, uploadToken: pending.uploadToken }),
-        });
+        if (pending.type === 'bunny') {
+          await fetch(`/api/projects/${pending.projectId}/videos/bunny-init`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ videoId: pending.videoId, uploadToken: pending.uploadToken }),
+          });
+        } else {
+          await cleanupPendingR2VideoUpload(pending.projectId, {
+            objectKey: pending.objectKey,
+            uploadToken: pending.uploadToken,
+            reservationId: pending.reservationId,
+            thumbnailObjectKey: pending.thumbnailObjectKey,
+          });
+        }
       } catch (error) {
         console.error('Failed to cleanup cancelled upload:', error);
       }
@@ -232,11 +257,79 @@ export function VideoDragDropUploader({
       setSelectedProjectId(projectId);
       setSelectedProjectName(projectName ?? projectsById.get(projectId) ?? null);
 
-      let createdVideoId: string | null = null;
-      let uploadToken: string | null = null;
+      let pendingCleanup:
+        | { type: 'bunny'; videoId: string; uploadToken: string }
+        | {
+            type: 'r2';
+            objectKey: string;
+            uploadToken: string;
+            reservationId: string | null;
+            thumbnailObjectKey?: string;
+          }
+        | null = null;
 
       try {
         const title = getDefaultTitleFromFile(file);
+
+        if (directUploadProvider === 'r2') {
+          const uploaded = await uploadVideoToR2(projectId, file, {
+            onProgress: (progress) => {
+              setUploadProgress(progress);
+              setUploadStatus(`Uploading... ${progress}%`);
+            },
+          });
+          pendingCleanup = {
+            type: 'r2',
+            objectKey: uploaded.objectKey,
+            uploadToken: uploaded.uploadToken,
+            reservationId: uploaded.reservationId,
+            thumbnailObjectKey: uploaded.thumbnailObjectKey,
+          };
+          pendingUploadRef.current = {
+            type: 'r2',
+            projectId,
+            objectKey: uploaded.objectKey,
+            uploadToken: uploaded.uploadToken,
+            reservationId: uploaded.reservationId,
+            thumbnailObjectKey: uploaded.thumbnailObjectKey,
+          };
+
+          setUploadStatus('Saving video...');
+          const createResponse = await fetch(`/api/projects/${projectId}/videos`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              title,
+              description: null,
+              videoUrl: uploaded.proxyUrl,
+              providerId: 'r2',
+              videoId: uploaded.objectKey,
+              thumbnailUrl: uploaded.thumbnailUrl || '/placeholder-video-thumbnail.png',
+              duration: uploaded.duration,
+              uploadToken: uploaded.uploadToken,
+              objectKey: uploaded.objectKey,
+              reservationId: uploaded.reservationId,
+            }),
+          });
+
+          const createPayload = (await createResponse.json().catch(() => null)) as {
+            error?: string;
+          } | null;
+
+          if (!createResponse.ok) {
+            throw new Error(createPayload?.error || 'Failed to create video');
+          }
+
+          toast.success(
+            `Video uploaded to ${projectName ?? projectsById.get(projectId) ?? 'project'}`
+          );
+          setDialogOpen(false);
+          setDroppedFile(null);
+          cleanupUploadState();
+          router.push(`/projects/${projectId}`);
+          router.refresh();
+          return;
+        }
 
         const initResponse = await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
           method: 'POST',
@@ -259,9 +352,11 @@ export function VideoDragDropUploader({
           throw new Error(initPayload?.error || 'Failed to initialize upload');
         }
 
-        createdVideoId = initPayload.data.videoId;
-        uploadToken = initPayload.data.uploadToken;
+        const createdVideoId = initPayload.data.videoId;
+        const uploadToken = initPayload.data.uploadToken;
+        pendingCleanup = { type: 'bunny', videoId: createdVideoId, uploadToken };
         pendingUploadRef.current = {
+          type: 'bunny',
           projectId,
           videoId: createdVideoId,
           uploadToken,
@@ -346,13 +441,20 @@ export function VideoDragDropUploader({
           return;
         }
 
-        if (createdVideoId && uploadToken) {
+        if (pendingCleanup) {
           try {
-            await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
-              method: 'DELETE',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ videoId: createdVideoId, uploadToken }),
-            });
+            if (pendingCleanup.type === 'bunny') {
+              await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  videoId: pendingCleanup.videoId,
+                  uploadToken: pendingCleanup.uploadToken,
+                }),
+              });
+            } else {
+              await cleanupPendingR2VideoUpload(projectId, pendingCleanup);
+            }
           } catch (cleanupError) {
             console.error('Failed to cleanup pending upload:', cleanupError);
           }
@@ -364,7 +466,7 @@ export function VideoDragDropUploader({
         toast.error(error instanceof Error ? error.message : 'Failed to upload video');
       }
     },
-    [bunnyCdnHostname, cleanupUploadState, projectsById, router]
+    [bunnyCdnHostname, cleanupUploadState, directUploadProvider, projectsById, router]
   );
 
   const handleDropFile = useCallback(

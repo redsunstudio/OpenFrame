@@ -2,6 +2,7 @@ import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import { r2Client, R2_BUCKET_NAME } from '@/lib/r2';
 import { db } from '@/lib/db';
 import { runWithConcurrency } from '@/lib/async-pool';
+import { videoProxyPathToObjectKey } from '@/lib/video-upload-validation';
 import { logError } from '@/lib/logger';
 
 /** The path prefix for images served by the upload API. */
@@ -32,7 +33,8 @@ export function mediaUrlToKey(url: string): string | null {
     const filename = url.slice(IMAGE_PATH_PREFIX.length);
     return filename ? `images/${filename}` : null;
   }
-  return null;
+
+  return videoProxyPathToObjectKey(url);
 }
 
 /**
@@ -80,7 +82,7 @@ export async function deleteMediaFilesBestEffort(mediaUrls: string[]): Promise<R
  * Collect all media URLs from comments under a given video (all versions).
  */
 export async function collectVideoMediaUrls(videoId: string): Promise<string[]> {
-  const [comments, assets] = await Promise.all([
+  const [comments, assets, versions] = await Promise.all([
     db.comment.findMany({
       where: {
         OR: [{ voiceUrl: { not: null } }, { imageUrl: { not: null } }],
@@ -95,6 +97,10 @@ export async function collectVideoMediaUrls(videoId: string): Promise<string[]> 
       },
       select: { sourceUrl: true },
     }),
+    db.videoVersion.findMany({
+      where: { videoParentId: videoId, providerId: 'r2' },
+      select: { originalUrl: true, thumbnailUrl: true },
+    }),
   ]);
   const urls: string[] = [];
   comments.forEach((c) => {
@@ -104,6 +110,10 @@ export async function collectVideoMediaUrls(videoId: string): Promise<string[]> 
   assets.forEach((asset) => {
     if (asset.sourceUrl) urls.push(asset.sourceUrl);
   });
+  versions.forEach((version) => {
+    if (version.originalUrl) urls.push(version.originalUrl);
+    if (version.thumbnailUrl) urls.push(version.thumbnailUrl);
+  });
   return urls;
 }
 
@@ -111,7 +121,7 @@ export async function collectVideoMediaUrls(videoId: string): Promise<string[]> 
  * Collect all media URLs from comments under all videos in a project.
  */
 export async function collectProjectMediaUrls(projectId: string): Promise<string[]> {
-  const [comments, assets] = await Promise.all([
+  const [comments, assets, versions] = await Promise.all([
     db.comment.findMany({
       where: {
         OR: [{ voiceUrl: { not: null } }, { imageUrl: { not: null } }],
@@ -126,6 +136,10 @@ export async function collectProjectMediaUrls(projectId: string): Promise<string
       },
       select: { sourceUrl: true },
     }),
+    db.videoVersion.findMany({
+      where: { providerId: 'r2', video: { projectId } },
+      select: { originalUrl: true, thumbnailUrl: true },
+    }),
   ]);
   const urls: string[] = [];
   comments.forEach((c) => {
@@ -135,6 +149,10 @@ export async function collectProjectMediaUrls(projectId: string): Promise<string
   assets.forEach((asset) => {
     if (asset.sourceUrl) urls.push(asset.sourceUrl);
   });
+  versions.forEach((version) => {
+    if (version.originalUrl) urls.push(version.originalUrl);
+    if (version.thumbnailUrl) urls.push(version.thumbnailUrl);
+  });
   return urls;
 }
 
@@ -142,7 +160,7 @@ export async function collectProjectMediaUrls(projectId: string): Promise<string
  * Collect all media URLs from comments under all projects in a workspace.
  */
 export async function collectWorkspaceMediaUrls(workspaceId: string): Promise<string[]> {
-  const [comments, assets] = await Promise.all([
+  const [comments, assets, versions] = await Promise.all([
     db.comment.findMany({
       where: {
         OR: [{ voiceUrl: { not: null } }, { imageUrl: { not: null } }],
@@ -157,6 +175,10 @@ export async function collectWorkspaceMediaUrls(workspaceId: string): Promise<st
       },
       select: { sourceUrl: true },
     }),
+    db.videoVersion.findMany({
+      where: { providerId: 'r2', video: { project: { workspaceId } } },
+      select: { originalUrl: true, thumbnailUrl: true },
+    }),
   ]);
   const urls: string[] = [];
   comments.forEach((c) => {
@@ -165,6 +187,10 @@ export async function collectWorkspaceMediaUrls(workspaceId: string): Promise<st
   });
   assets.forEach((asset) => {
     if (asset.sourceUrl) urls.push(asset.sourceUrl);
+  });
+  versions.forEach((version) => {
+    if (version.originalUrl) urls.push(version.originalUrl);
+    if (version.thumbnailUrl) urls.push(version.thumbnailUrl);
   });
   return urls;
 }

@@ -21,7 +21,7 @@ OpenFrame is built for video teams that want one system for review, revision, ap
 - Comment tags, resolved states, and CSV/PDF exports
 - Video-linked assets for supporting media and references
 - Email and Telegram notifications
-- URL-based YouTube video intake plus optional Bunny direct uploads
+- URL-based YouTube video intake plus optional direct uploads (Bunny Stream or self-hosted S3)
 
 ## Core Workflow
 
@@ -75,8 +75,8 @@ OpenFrame is built with:
 - PostgreSQL
 - NextAuth.js
 - Tailwind CSS
-- MinIO or other S3-compatible object storage for self-hosted media
-- Bunny Stream for optional direct video uploads
+- MinIO or other S3-compatible object storage for self-hosted media and direct video uploads
+- Bunny Stream for optional hosted direct video uploads (mutually exclusive with S3 video uploads)
 
 ## Self-Hosting
 
@@ -177,13 +177,14 @@ OPENFRAME_REQUIRE_INVITE_CODE=false
 Behavior when disabled:
 
 - `OPENFRAME_ENABLE_STRIPE=false` disables Stripe checkout and customer portal flows and removes billing-based workspace restrictions.
-- `OPENFRAME_ENABLE_BUNNY_UPLOADS=false` hides direct-upload entry points. URL-based providers such as YouTube remain available.
+- `OPENFRAME_ENABLE_BUNNY_UPLOADS=false` hides Bunny direct-upload entry points. URL-based providers such as YouTube remain available.
+- `OPENFRAME_ENABLE_S3_VIDEO_UPLOADS=true` (with `R2_*` configured) enables presigned uploads to your own S3-compatible storage. Set `OPENFRAME_ENABLE_BUNNY_UPLOADS=false` — only one direct-upload backend can be active. The bucket must allow CORS `PUT` from your app origin (for example `http://localhost:3000` in dev and your production URL). For Docker + MinIO, keep `R2_ENDPOINT=http://minio:9000` (app-internal) and set `R2_PRESIGN_ENDPOINT=http://localhost:9000` (browser-reachable host).
 - `OPENFRAME_REQUIRE_INVITE_CODE=false` allows open registration while keeping invitation-link registration intact.
 
 These integrations remain optional for self-hosted deployments and can be enabled later by setting the related environment variables:
 
 - Stripe billing
-- Bunny direct uploads
+- Bunny direct uploads (hosted) or S3 video uploads via `OPENFRAME_ENABLE_S3_VIDEO_UPLOADS` (self-hosted)
 - SMTP for invitation and notification delivery
 - Telegram notifications
 - External S3-compatible storage such as Cloudflare R2 or another compatible provider instead of bundled MinIO

@@ -10,7 +10,7 @@ import { logError } from '@/lib/logger';
 
 const UNATTACHED_UPLOAD_TTL_MS = 15 * 60 * 1000;
 const CHUNK_SIZE = 500;
-const PREFIXES = ['images/', 'voice/'] as const;
+const PREFIXES = ['images/', 'voice/', 'videos/'] as const;
 
 type CleanupCandidate = {
   key: string;
@@ -32,6 +32,10 @@ function keyToProxyUrl(key: string): string | null {
   if (key.startsWith('voice/')) {
     const filename = key.slice('voice/'.length);
     return filename ? `/api/upload/audio/${filename}` : null;
+  }
+  if (key.startsWith('videos/')) {
+    const filename = key.slice('videos/'.length);
+    return filename ? `/api/upload/video/${filename}` : null;
   }
   return null;
 }
@@ -93,31 +97,38 @@ async function findReferencedUrls(urls: string[]): Promise<Set<string>> {
   ).userFeedbackScreenshot;
 
   for (const group of chunk(urls, CHUNK_SIZE)) {
-    const [commentRows, feedbackRows, feedbackAttachmentRows, assetRows] = await Promise.all([
-      db.comment.findMany({
-        where: {
-          OR: [{ voiceUrl: { in: group } }, { imageUrl: { in: group } }],
-        },
-        select: {
-          voiceUrl: true,
-          imageUrl: true,
-        },
-      }),
-      db.userFeedback.findMany({
-        where: { screenshotUrl: { in: group } },
-        select: { screenshotUrl: true },
-      }),
-      userFeedbackScreenshotDelegate
-        ? userFeedbackScreenshotDelegate.findMany({
-            where: { url: { in: group } },
-            select: { url: true },
-          })
-        : Promise.resolve([] as Array<{ url: string }>),
-      db.videoAsset.findMany({
-        where: { sourceUrl: { in: group } },
-        select: { sourceUrl: true },
-      }),
-    ]);
+    const [commentRows, feedbackRows, feedbackAttachmentRows, assetRows, versionRows] =
+      await Promise.all([
+        db.comment.findMany({
+          where: {
+            OR: [{ voiceUrl: { in: group } }, { imageUrl: { in: group } }],
+          },
+          select: {
+            voiceUrl: true,
+            imageUrl: true,
+          },
+        }),
+        db.userFeedback.findMany({
+          where: { screenshotUrl: { in: group } },
+          select: { screenshotUrl: true },
+        }),
+        userFeedbackScreenshotDelegate
+          ? userFeedbackScreenshotDelegate.findMany({
+              where: { url: { in: group } },
+              select: { url: true },
+            })
+          : Promise.resolve([] as Array<{ url: string }>),
+        db.videoAsset.findMany({
+          where: { sourceUrl: { in: group } },
+          select: { sourceUrl: true },
+        }),
+        db.videoVersion.findMany({
+          where: {
+            OR: [{ originalUrl: { in: group } }, { thumbnailUrl: { in: group } }],
+          },
+          select: { originalUrl: true, thumbnailUrl: true },
+        }),
+      ]);
 
     for (const row of commentRows) {
       if (row.voiceUrl) referenced.add(row.voiceUrl);
@@ -131,6 +142,10 @@ async function findReferencedUrls(urls: string[]): Promise<Set<string>> {
     }
     for (const row of assetRows) {
       if (row.sourceUrl) referenced.add(row.sourceUrl);
+    }
+    for (const row of versionRows) {
+      if (row.originalUrl) referenced.add(row.originalUrl);
+      if (row.thumbnailUrl) referenced.add(row.thumbnailUrl);
     }
   }
 

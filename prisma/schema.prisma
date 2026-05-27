@@ -361,6 +361,7 @@ model VideoVersion {
   title           String?
   thumbnailUrl    String?
   duration        Int?     // Duration in seconds
+  sizeBytes       BigInt   @default(0) @map("size_bytes") // R2-hosted video file size
   
   // Status
   isActive        Boolean  @default(true) // Currently displayed version
@@ -699,6 +700,37 @@ model UploadReservation {
 
   @@index([billedUserId, expiresAt])
   @@map("upload_reservations")
+}
+
+enum UploadSessionStatus {
+  INITIATED
+  FINALIZED
+  CANCELLED
+  EXPIRED
+}
+
+model VideoUploadSession {
+  id                 String              @id @default(cuid())
+  uploadJti          String              @unique @map("upload_jti")
+  userId             String
+  projectId          String
+  billedUserId       String              @map("billed_user_id")
+  objectKey          String              @unique @map("object_key")
+  thumbnailObjectKey String              @map("thumbnail_object_key")
+  declaredSizeBytes  BigInt              @map("declared_size_bytes")
+  contentType        String              @map("content_type")
+  reservationId      String?             @map("reservation_id")
+  expiresAt          DateTime            @map("expires_at")
+  status             UploadSessionStatus @default(INITIATED)
+  consumedAt         DateTime?           @map("consumed_at")
+  createdAt          DateTime            @default(now()) @map("created_at")
+  updatedAt          DateTime            @updatedAt @map("updated_at")
+
+  @@index([projectId, status])
+  @@index([userId, status])
+  @@index([billedUserId])
+  @@index([expiresAt])
+  @@map("video_upload_sessions")
 }
 
 // Rate limiting table (created as UNLOGGED via raw SQL migration)

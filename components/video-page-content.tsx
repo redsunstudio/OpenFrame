@@ -71,14 +71,16 @@ interface VideoPageContentProps {
   mode: VideoPageMode;
   videoId: string;
   projectId?: string;
-  bunnyUploadsEnabled?: boolean;
+  directUploadsEnabled?: boolean;
+  directUploadProvider?: import('@/components/video-page/types').DirectUploadProvider;
 }
 
 export function VideoPageContent({
   mode,
   videoId,
   projectId: propProjectId,
-  bunnyUploadsEnabled = true,
+  directUploadsEnabled = false,
+  directUploadProvider = 'bunny',
 }: VideoPageContentProps) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -200,7 +202,8 @@ export function VideoPageContent({
   } = useVersionActions({
     projectId: propProjectId,
     videoId,
-    bunnyUploadsEnabled,
+    directUploadsEnabled,
+    directUploadProvider,
     setVideo,
     activeVersionId,
     setActiveVersionId,
@@ -281,6 +284,20 @@ export function VideoPageContent({
     if (activeVersion.providerId === 'bunny') {
       if (!bunnyCdnHostname) return '';
       return `https://${bunnyCdnHostname}/${activeVersion.videoId}/playlist.m3u8`;
+    }
+    if (activeVersion.providerId === 'r2') {
+      if (activeVersion.originalUrl.startsWith('/api/upload/video/')) {
+        return activeVersion.originalUrl;
+      }
+      if (activeVersion.originalUrl.startsWith('videos/')) {
+        const filename = activeVersion.originalUrl.slice('videos/'.length);
+        return `/api/upload/video/${filename}`;
+      }
+      if (activeVersion.videoId.startsWith('videos/')) {
+        const filename = activeVersion.videoId.slice('videos/'.length);
+        return `/api/upload/video/${filename}`;
+      }
+      return activeVersion.originalUrl;
     }
     try {
       const url = new URL(activeVersion.originalUrl);
@@ -551,7 +568,8 @@ export function VideoPageContent({
   const isBunnyVersion = activeVersion?.providerId === 'bunny';
   const showBunnyProcessingOverlay =
     isBunnyVersion && bunnyPlaybackState === 'processing' && !isReady;
-  const showBunnyErrorOverlay = isBunnyVersion && bunnyPlaybackState === 'error';
+  const isR2Version = activeVersion?.providerId === 'r2';
+  const showBunnyErrorOverlay = (isBunnyVersion || isR2Version) && bunnyPlaybackState === 'error';
 
   const confirmGuestName = useCallback(() => {
     if (!guestName.trim()) return;
@@ -732,7 +750,7 @@ export function VideoPageContent({
             onDownload={headerActions.onDownload}
             projectId={projectId}
             videoId={videoId}
-            bunnyUploadsEnabled={bunnyUploadsEnabled}
+            directUploadsEnabled={directUploadsEnabled}
             showVersionDialog={showVersionDialog}
             setShowVersionDialog={setShowVersionDialog}
             newVersionMode={newVersionMode}

@@ -5,6 +5,7 @@ import { GuestGate } from '@/components/guest-gate';
 import { auth, checkProjectAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { ProjectContentClient } from './project-content-client';
+import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return '0:00';
@@ -141,6 +142,9 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
     };
   });
 
+  const directUploadsEnabled = isDirectFileUploadEnabled();
+  const directUploadProvider = isS3VideoUploadsEnabled() ? 'r2' : 'bunny';
+
   const canEdit =
     access.canEdit &&
     (isOwner ||
@@ -181,6 +185,8 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
             workspaceRole={null}
             totalPages={totalPages}
             currentPage={page}
+            directUploadsEnabled={directUploadsEnabled}
+            directUploadProvider={directUploadProvider}
           />
         </div>
       </GuestGate>
@@ -208,6 +214,8 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
         workspaceRole={workspaceRole}
         totalPages={totalPages}
         currentPage={page}
+        directUploadsEnabled={directUploadsEnabled}
+        directUploadProvider={directUploadProvider}
       />
     </div>
   );

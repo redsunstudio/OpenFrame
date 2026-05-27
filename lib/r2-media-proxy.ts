@@ -168,13 +168,19 @@ export async function proxyR2MediaObject({
   }
 
   const headers = new Headers();
-  setIfPresent(headers, 'Content-Type', objectResponse.ContentType || fallbackContentType);
+  const resolvedContentType =
+    objectResponse.ContentType && objectResponse.ContentType !== 'application/octet-stream'
+      ? objectResponse.ContentType
+      : fallbackContentType;
+  setIfPresent(headers, 'Content-Type', resolvedContentType);
   setIfPresent(headers, 'Content-Length', objectResponse.ContentLength);
   setIfPresent(headers, 'Content-Range', objectResponse.ContentRange);
   setIfPresent(headers, 'ETag', objectResponse.ETag);
   setIfPresent(headers, 'Last-Modified', objectResponse.LastModified?.toUTCString());
   setIfPresent(headers, 'Accept-Ranges', objectResponse.AcceptRanges || 'bytes');
   headers.set('Cache-Control', cacheControl);
+  headers.set('X-Content-Type-Options', 'nosniff');
+  headers.set('Content-Disposition', 'inline');
 
   if (extraHeaders) {
     for (const [name, value] of Object.entries(extraHeaders)) {

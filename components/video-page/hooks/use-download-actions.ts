@@ -67,7 +67,11 @@ export function useDownloadActions({ activeVersion, video }: UseDownloadActionsP
         toast.error('Download is disabled for this shared link');
         return;
       }
-      if (activeVersion.providerId !== 'bunny' && activeVersion.providerId !== 'direct') {
+      if (
+        activeVersion.providerId !== 'bunny' &&
+        activeVersion.providerId !== 'direct' &&
+        activeVersion.providerId !== 'r2'
+      ) {
         toast.error('This video source does not support direct download');
         return;
       }
@@ -97,6 +101,11 @@ export function useDownloadActions({ activeVersion, video }: UseDownloadActionsP
           }
 
           downloadUrl = `/api/versions/${activeVersion.id}/download?source=${preference}`;
+        } else if (activeVersion.providerId === 'r2') {
+          if (!activeVersion.originalUrl.startsWith('/api/upload/video/')) {
+            throw new Error('Direct download URL is not allowed');
+          }
+          downloadUrl = activeVersion.originalUrl;
         } else {
           downloadUrl = getSafeDirectDownloadUrl(activeVersion.originalUrl);
           if (!downloadUrl) {
@@ -113,8 +122,9 @@ export function useDownloadActions({ activeVersion, video }: UseDownloadActionsP
         const baseName = sanitizeDownloadFileName(`${video.title} ${versionLabel}`) || 'video';
         const a = document.createElement('a');
         a.href = downloadUrl;
-        if (activeVersion.providerId === 'direct') {
-          a.download = `${baseName}.mp4`;
+        if (activeVersion.providerId === 'direct' || activeVersion.providerId === 'r2') {
+          const ext = activeVersion.originalUrl.split('.').pop()?.toLowerCase() || 'mp4';
+          a.download = `${baseName}.${ext}`;
         }
         document.body.appendChild(a);
         a.click();

@@ -28,7 +28,7 @@ import type { VideoSource } from '@/lib/video-providers';
 interface VersionActionsDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  bunnyUploadsEnabled: boolean;
+  directUploadsEnabled: boolean;
   newVersionMode: 'url' | 'file';
   onNewVersionModeChange: (mode: 'url' | 'file') => void;
   newVersionUrl: string;
@@ -49,7 +49,7 @@ interface VersionActionsDialogProps {
 export const VersionActionsDialog = memo(function VersionActionsDialog({
   open,
   onOpenChange,
-  bunnyUploadsEnabled,
+  directUploadsEnabled,
   newVersionMode,
   onNewVersionModeChange,
   newVersionUrl,
@@ -88,10 +88,10 @@ export const VersionActionsDialog = memo(function VersionActionsDialog({
             className="mb-2"
           >
             <TabsList
-              className={`grid w-full ${bunnyUploadsEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}
+              className={`grid w-full ${directUploadsEnabled ? 'grid-cols-2' : 'grid-cols-1'}`}
             >
               <TabsTrigger value="url">Link URL</TabsTrigger>
-              {bunnyUploadsEnabled ? <TabsTrigger value="file">Upload File</TabsTrigger> : null}
+              {directUploadsEnabled ? <TabsTrigger value="file">Upload File</TabsTrigger> : null}
             </TabsList>
           </Tabs>
 

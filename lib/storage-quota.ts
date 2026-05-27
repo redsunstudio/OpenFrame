@@ -20,12 +20,21 @@ class QuotaExceededError extends Error {}
  * every upload.
  */
 export async function getUserTotalStorageBytes(userId: string): Promise<bigint> {
-  const [r2Rows, bunnyByUser, reservationRows] = await Promise.all([
+  const [r2AssetRows, r2VideoRows, bunnyByUser, reservationRows] = await Promise.all([
     db.$queryRaw<[{ total: bigint }]>`
       SELECT COALESCE(SUM(size_bytes), 0)::bigint AS total
       FROM video_assets
       WHERE "billedUserId" = ${userId}
         AND provider IN ('R2_IMAGE', 'R2_AUDIO')
+    `,
+    db.$queryRaw<[{ total: bigint }]>`
+      SELECT COALESCE(SUM(vv.size_bytes), 0)::bigint AS total
+      FROM video_versions vv
+      INNER JOIN videos v ON v.id = vv."videoParentId"
+      INNER JOIN projects p ON p.id = v."projectId"
+      INNER JOIN workspaces w ON w.id = p."workspaceId"
+      WHERE w."ownerId" = ${userId}
+        AND vv."providerId" = 'r2'
     `,
     getCachedUserBunnyStorage(),
     db.$queryRaw<[{ total: bigint }]>`
@@ -36,11 +45,12 @@ export async function getUserTotalStorageBytes(userId: string): Promise<bigint> 
     `,
   ]);
 
-  const r2Bytes = r2Rows[0]?.total ?? BigInt(0);
+  const r2AssetBytes = r2AssetRows[0]?.total ?? BigInt(0);
+  const r2VideoBytes = r2VideoRows[0]?.total ?? BigInt(0);
   const bunnyBytes = BigInt(bunnyByUser[userId] ?? 0);
   const reservedBytes = reservationRows[0]?.total ?? BigInt(0);
 
-  return r2Bytes + bunnyBytes + reservedBytes;
+  return r2AssetBytes + r2VideoBytes + bunnyBytes + reservedBytes;
 }
 
 /**
@@ -102,13 +112,14 @@ export async function enforceStorageQuota(
  */
 export async function reserveStorageQuota(
   userId: string,
-  incomingSizeBytes: bigint
+  incomingSizeBytes: bigint,
+  reservationTtlMs: number = RESERVATION_TTL_MS
 ): Promise<{ reservationId: string | null } | { error: NextResponse }> {
   if (!isStripeFeatureEnabled()) {
     return { reservationId: null };
   }
 
-  const expiresAt = new Date(Date.now() + RESERVATION_TTL_MS);
+  const expiresAt = new Date(Date.now() + reservationTtlMs);
 
   // Fetch Bunny storage BEFORE entering the transaction to avoid holding the
   // advisory lock during a potentially slow/failing HTTP call on cache miss.
@@ -128,13 +139,22 @@ export async function reserveStorageQuota(
       `;
 
       // Read committed R2 storage under the lock
-      const [r2Row] = await tx.$queryRaw<[{ total: bigint }]>`
+      const [r2AssetRow] = await tx.$queryRaw<[{ total: bigint }]>`
         SELECT COALESCE(SUM(size_bytes), 0)::bigint AS total
         FROM video_assets
         WHERE "billedUserId" = ${userId}
           AND provider IN ('R2_IMAGE', 'R2_AUDIO')
       `;
-      const r2Bytes = r2Row?.total ?? BigInt(0);
+      const [r2VideoRow] = await tx.$queryRaw<[{ total: bigint }]>`
+        SELECT COALESCE(SUM(vv.size_bytes), 0)::bigint AS total
+        FROM video_versions vv
+        INNER JOIN videos v ON v.id = vv."videoParentId"
+        INNER JOIN projects p ON p.id = v."projectId"
+        INNER JOIN workspaces w ON w.id = p."workspaceId"
+        WHERE w."ownerId" = ${userId}
+          AND vv."providerId" = 'r2'
+      `;
+      const r2Bytes = (r2AssetRow?.total ?? BigInt(0)) + (r2VideoRow?.total ?? BigInt(0));
 
       // Read active (non-expired) reservations under the same lock
       const [resRow] = await tx.$queryRaw<[{ total: bigint }]>`
@@ -171,7 +191,15 @@ export async function reserveStorageQuota(
  * Deletes an upload reservation created by `reserveStorageQuota`.
  * Safe to call with `null` (no-op) for flows where billing is disabled.
  */
-export async function releaseStorageReservation(reservationId: string | null): Promise<void> {
+export async function releaseStorageReservation(
+  reservationId: string | null,
+  billedUserId?: string | null
+): Promise<void> {
   if (!reservationId) return;
-  await db.uploadReservation.deleteMany({ where: { id: reservationId } });
+  await db.uploadReservation.deleteMany({
+    where: {
+      id: reservationId,
+      ...(billedUserId ? { billedUserId } : {}),
+    },
+  });
 }

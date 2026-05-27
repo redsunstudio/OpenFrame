@@ -51,6 +51,15 @@ interface UseCommentActionsParams extends CommentActionsConfig {
   fetchAssets: () => Promise<void>;
 }
 
+function getAudioUploadFilename(blob: Blob): string {
+  const mime = blob.type.split(';')[0].trim().toLowerCase();
+  if (mime === 'audio/mp4') return 'recording.m4a';
+  if (mime === 'audio/ogg' || mime === 'audio/opus') return 'recording.ogg';
+  if (mime === 'audio/mpeg') return 'recording.mp3';
+  if (mime === 'audio/wav') return 'recording.wav';
+  return 'recording.webm';
+}
+
 export function useCommentActions({
   videoId,
   setVideo,
@@ -430,7 +439,8 @@ export function useCommentActions({
       };
 
       mediaRecorder.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        const recordedMime = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(audioChunksRef.current, { type: recordedMime });
         setAudioBlob(blob);
         stream.getTracks().forEach((track) => track.stop());
         if (recordingTimerRef.current) {
@@ -472,7 +482,8 @@ export function useCommentActions({
 
     try {
       const formData = new FormData();
-      formData.append('audio', audioBlob, 'recording.webm');
+      const uploadFilename = getAudioUploadFilename(audioBlob);
+      formData.append('audio', audioBlob, uploadFilename);
       formData.append('videoId', videoId);
       const uploadToken = await getGuestUploadToken('audio');
       if (uploadToken) formData.append('uploadToken', uploadToken);
@@ -514,7 +525,7 @@ export function useCommentActions({
       let voiceData: { url: string; duration: number } | undefined;
       if (audioBlob) {
         const formData = new FormData();
-        formData.append('audio', audioBlob, 'recording.webm');
+        formData.append('audio', audioBlob, getAudioUploadFilename(audioBlob));
         formData.append('videoId', videoId);
         const uploadToken = await getGuestUploadToken('audio');
         if (uploadToken) formData.append('uploadToken', uploadToken);
@@ -829,7 +840,8 @@ export function useCommentActions({
         if (e.data.size > 0) replyAudioChunksRef.current.push(e.data);
       };
       mediaRecorder.onstop = () => {
-        const blob = new Blob(replyAudioChunksRef.current, { type: 'audio/webm' });
+        const recordedMime = mediaRecorder.mimeType || 'audio/webm';
+        const blob = new Blob(replyAudioChunksRef.current, { type: recordedMime });
         setReplyAudioBlob(blob);
         stream.getTracks().forEach((track) => track.stop());
         if (replyRecordingTimerRef.current) {
@@ -870,7 +882,7 @@ export function useCommentActions({
       setIsUploadingReplyAudio(true);
       try {
         const formData = new FormData();
-        formData.append('audio', replyAudioBlob, 'recording.webm');
+        formData.append('audio', replyAudioBlob, getAudioUploadFilename(replyAudioBlob));
         formData.append('videoId', videoId);
         const uploadToken = await getGuestUploadToken('audio');
         if (uploadToken) formData.append('uploadToken', uploadToken);
@@ -912,7 +924,7 @@ export function useCommentActions({
 
         if (replyAudioBlob) {
           const formData = new FormData();
-          formData.append('audio', replyAudioBlob, 'recording.webm');
+          formData.append('audio', replyAudioBlob, getAudioUploadFilename(replyAudioBlob));
           formData.append('videoId', videoId);
           const uploadToken = await getGuestUploadToken('audio');
           if (uploadToken) formData.append('uploadToken', uploadToken);

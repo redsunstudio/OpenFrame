@@ -15,6 +15,41 @@ function resolveBunnyCdnHostname(): string | null {
 const bunnyCdnHostname = resolveBunnyCdnHostname();
 const isDev = process.env.NODE_ENV === 'development';
 
+function resolveR2ConnectOrigins(): string[] {
+  const origins = new Set<string>();
+
+  for (const raw of [
+    process.env.R2_ENDPOINT?.trim(),
+    process.env.R2_PRESIGN_ENDPOINT?.trim(),
+    process.env.R2_PUBLIC_BASE_URL?.trim(),
+  ]) {
+    if (!raw) continue;
+    try {
+      origins.add(new URL(raw).origin);
+    } catch {
+      // Ignore invalid custom endpoints in CSP generation.
+    }
+  }
+
+  const accountId = process.env.R2_ACCOUNT_ID?.trim();
+  const bucket = process.env.R2_BUCKET_NAME?.trim();
+  if (accountId) {
+    origins.add(`https://${accountId}.r2.cloudflarestorage.com`);
+    if (bucket) {
+      origins.add(`https://${bucket}.${accountId}.r2.cloudflarestorage.com`);
+    }
+    origins.add('https://*.r2.cloudflarestorage.com');
+  }
+
+  // Docker/MinIO self-hosted defaults. Keep unconditional because CSP is
+  // compiled at build time and build env may not include runtime self-hosted
+  // variables.
+  origins.add('http://localhost:9000');
+  origins.add('http://127.0.0.1:9000');
+
+  return [...origins];
+}
+
 // Build Content-Security-Policy from resolved config
 const cdnOrigin = bunnyCdnHostname ? `https://${bunnyCdnHostname}` : '';
 
@@ -23,6 +58,7 @@ const connectSrcParts = [
   'https://video.bunnycdn.com',
   'https://www.youtube.com',
   cdnOrigin,
+  ...resolveR2ConnectOrigins(),
   // Allow Next.js HMR websocket in development
   ...(isDev ? ['ws://localhost:* wss://localhost:*'] : []),
 ].filter(Boolean);

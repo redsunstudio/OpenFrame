@@ -48,23 +48,43 @@ export async function GET(
       projectId: true,
       project: { select: projectSelect },
     } as const;
-    const [comment, videoAsset, session] = await Promise.all([
-      db.comment.findFirst({
+    const [comments, videoAssets, videoVersions, session] = await Promise.all([
+      db.comment.findMany({
         where: { imageUrl },
+        take: 2,
         select: {
           version: {
             select: { video: { select: videoSelect } },
           },
         },
       }),
-      db.videoAsset.findFirst({
+      db.videoAsset.findMany({
         where: { sourceUrl: imageUrl },
+        take: 2,
+        select: { video: { select: videoSelect } },
+      }),
+      db.videoVersion.findMany({
+        where: { thumbnailUrl: imageUrl },
+        take: 2,
         select: { video: { select: videoSelect } },
       }),
       auth(),
     ]);
 
-    const video = comment?.version?.video ?? videoAsset?.video ?? null;
+    const uniqueVideos = new Map<string, (typeof videoAssets)[number]['video']>();
+    comments.forEach((comment) => {
+      if (comment.version?.video) uniqueVideos.set(comment.version.video.id, comment.version.video);
+    });
+    videoAssets.forEach((videoAsset) => uniqueVideos.set(videoAsset.video.id, videoAsset.video));
+    videoVersions.forEach((videoVersion) =>
+      uniqueVideos.set(videoVersion.video.id, videoVersion.video)
+    );
+
+    if (uniqueVideos.size > 1) {
+      return apiErrors.forbidden('Access denied');
+    }
+
+    const video = uniqueVideos.values().next().value ?? null;
     if (!video) {
       return apiErrors.forbidden('Access denied');
     }

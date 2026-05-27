@@ -8,7 +8,7 @@ import {
 } from '@/lib/route-access';
 import { DashboardClient } from './dashboard-client';
 import { buildBillingAccessWhereInput } from '@/lib/billing';
-import { isBunnyUploadsEnabled } from '@/lib/feature-flags';
+import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 
 export default async function DashboardPage({
   searchParams,
@@ -157,7 +157,8 @@ export default async function DashboardPage({
       totalPages={totalPages}
       canCreateProjects={canCreateProjects}
       canUploadVideos={canUploadVideos}
-      bunnyUploadsEnabled={isBunnyUploadsEnabled()}
+      directUploadsEnabled={isDirectFileUploadEnabled()}
+      directUploadProvider={isS3VideoUploadsEnabled() ? 'r2' : 'bunny'}
     />
   );
 }

@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { auth, checkProjectAccess } from '@/lib/auth';
-import { validateUrl, validateOptionalUrl } from '@/lib/validation';
+import { validateUrl, validateOptionalUrlOrAppPath } from '@/lib/validation';
+import { toJsonSafe } from '@/lib/json-serialize';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyProjectOwner } from '@/lib/notifications';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { verifyBunnyUploadToken } from '@/lib/bunny-upload-token';
+import { finalizeR2VideoUpload } from '@/lib/r2-video-finalize';
 import { logError } from '@/lib/logger';
 
 type RouteParams = { params: Promise<{ projectId: string; videoId: string }> };
@@ -88,6 +90,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       duration,
       setActive,
       uploadToken,
+      objectKey,
     } = body;
 
     if (!videoUrl) {
@@ -103,13 +106,23 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }
     }
 
-    // Validate URLs use safe schemes (http/https only)
-    const videoUrlError = validateUrl(videoUrl, 'Video URL');
-    if (videoUrlError) {
-      return apiErrors.badRequest(videoUrlError);
+    const normalizedProviderIdEarly =
+      typeof providerId === 'string' && providerId.trim()
+        ? providerId.trim().toLowerCase()
+        : 'youtube';
+
+    if (normalizedProviderIdEarly === 'r2') {
+      if (!videoUrl.startsWith('/api/upload/video/')) {
+        return apiErrors.badRequest('Video URL must be a valid upload path');
+      }
+    } else {
+      const videoUrlError = validateUrl(videoUrl, 'Video URL');
+      if (videoUrlError) {
+        return apiErrors.badRequest(videoUrlError);
+      }
     }
 
-    const thumbnailUrlError = validateOptionalUrl(thumbnailUrl, 'Thumbnail URL');
+    const thumbnailUrlError = validateOptionalUrlOrAppPath(thumbnailUrl, 'Thumbnail URL');
     if (thumbnailUrlError) {
       return apiErrors.badRequest(thumbnailUrlError);
     }
@@ -121,6 +134,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const normalizedProviderVideoId =
       typeof providerVideoId === 'string' ? providerVideoId.trim() : '';
     const normalizedUploadToken = typeof uploadToken === 'string' ? uploadToken.trim() : '';
+
+    let versionSizeBytes = BigInt(0);
+    let persistedProviderVideoId = normalizedProviderVideoId;
+    let finalizedR2Session: {
+      sessionId: string;
+      reservationId: string | null;
+      billedUserId: string;
+      thumbnailProxyUrl: string;
+    } | null = null;
 
     if (normalizedProviderId === 'bunny') {
       if (!normalizedProviderVideoId || !normalizedUploadToken) {
@@ -135,6 +157,34 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (!isValidUploadToken) {
         return apiErrors.forbidden('Invalid Bunny upload token');
       }
+    } else if (normalizedProviderId === 'r2') {
+      const normalizedObjectKey = typeof objectKey === 'string' ? objectKey.trim() : '';
+      if (!normalizedObjectKey || !normalizedUploadToken) {
+        return apiErrors.badRequest('R2 uploads must include objectKey and uploadToken');
+      }
+
+      const finalizeResult = await finalizeR2VideoUpload({
+        userId: session.user.id,
+        projectId,
+        videoUrl,
+        objectKey: normalizedObjectKey,
+        uploadToken: normalizedUploadToken,
+      });
+      if (!finalizeResult.ok) {
+        if (finalizeResult.status === 403) {
+          return apiErrors.forbidden(finalizeResult.error);
+        }
+        return apiErrors.badRequest(finalizeResult.error);
+      }
+
+      versionSizeBytes = finalizeResult.sizeBytes;
+      persistedProviderVideoId = normalizedObjectKey;
+      finalizedR2Session = {
+        sessionId: finalizeResult.sessionId,
+        reservationId: finalizeResult.reservationId,
+        billedUserId: finalizeResult.billedUserId,
+        thumbnailProxyUrl: finalizeResult.thumbnailProxyUrl,
+      };
     }
 
     const nextVersionNumber = (video.versions[0]?.versionNumber || 0) + 1;
@@ -150,16 +200,47 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           });
         }
 
+        if (finalizedR2Session) {
+          const consumed = await tx.videoUploadSession.updateMany({
+            where: {
+              id: finalizedR2Session.sessionId,
+              status: 'INITIATED',
+              userId: session.user.id,
+              projectId,
+              objectKey: persistedProviderVideoId,
+            },
+            data: {
+              status: 'FINALIZED',
+              consumedAt: new Date(),
+            },
+          });
+          if (consumed.count !== 1) {
+            throw new Error('Upload session already consumed');
+          }
+          if (finalizedR2Session.reservationId) {
+            await tx.uploadReservation.deleteMany({
+              where: {
+                id: finalizedR2Session.reservationId,
+                billedUserId: finalizedR2Session.billedUserId,
+              },
+            });
+          }
+        }
+
         return tx.videoVersion.create({
           data: {
             versionNumber: nextVersionNumber,
             versionLabel: versionLabel?.trim() || null,
             providerId: normalizedProviderId,
-            videoId: normalizedProviderVideoId,
+            videoId: persistedProviderVideoId,
             originalUrl: videoUrl,
             title: versionLabel?.trim() || `Version ${nextVersionNumber}`,
-            thumbnailUrl: thumbnailUrl || null,
+            thumbnailUrl:
+              normalizedProviderId === 'r2'
+                ? (finalizedR2Session?.thumbnailProxyUrl ?? '/placeholder-video-thumbnail.png')
+                : thumbnailUrl || null,
             duration: duration || null,
+            sizeBytes: versionSizeBytes,
             isActive: setActive ?? false,
             videoParentId: videoId,
           },
@@ -183,7 +264,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }).catch((err) => logError('Notification failed:', err));
     }
 
-    const response = successResponse(version, 201);
+    const response = successResponse(toJsonSafe(version), 201);
     return withCacheControl(response, 'private, no-store');
   } catch (error) {
     logError('Error creating version:', error);

@@ -37,6 +37,9 @@ const MIME_ALIASES: Record<string, string> = {
   'audio/x-pn-wav': 'audio/wav',
   'audio/mp3': 'audio/mpeg',
   'audio/x-mpeg': 'audio/mpeg',
+  // Some browsers report MediaRecorder audio-only blobs as video/* containers.
+  'video/webm': 'audio/webm',
+  'video/mp4': 'audio/mp4',
 };
 
 // Map canonical MIME to fallback file extension
@@ -231,7 +234,8 @@ export async function POST(request: NextRequest) {
       await releaseStorageReservation(reservationId);
       return apiErrors.badRequest('File content does not match an audio format');
     }
-    if (!hasValidAudioMagicBytes(buffer.slice(0, 16), contentType)) {
+    const hasValidMagicBytes = hasValidAudioMagicBytes(buffer.slice(0, 16), contentType);
+    if (!hasValidMagicBytes) {
       await releaseStorageReservation(reservationId);
       return apiErrors.badRequest('File content does not match the declared audio format');
     }

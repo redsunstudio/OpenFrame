@@ -1,6 +1,6 @@
 import { VideoPageContent } from '@/components/video-page-content';
 import { auth } from '@/lib/auth';
-import { isBunnyUploadsEnabled } from '@/lib/feature-flags';
+import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 import { requireVideoProjectAccessOrRedirect } from '@/lib/route-access';
 
 interface VideoPageProps {
@@ -24,7 +24,8 @@ export default async function VideoPage({ params }: VideoPageProps) {
       mode="dashboard"
       videoId={videoId}
       projectId={projectId}
-      bunnyUploadsEnabled={isBunnyUploadsEnabled()}
+      directUploadsEnabled={isDirectFileUploadEnabled()}
+      directUploadProvider={isS3VideoUploadsEnabled() ? 'r2' : 'bunny'}
     />
   );
 }

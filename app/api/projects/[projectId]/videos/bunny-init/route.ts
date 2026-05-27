@@ -6,7 +6,7 @@ import { rateLimit } from '@/lib/rate-limit';
 import crypto from 'crypto';
 import { cleanupBunnyStreamVideos } from '@/lib/bunny-stream-cleanup';
 import { createBunnyUploadToken, verifyBunnyUploadToken } from '@/lib/bunny-upload-token';
-import { isBunnyUploadsFeatureEnabled } from '@/lib/feature-flags';
+import { isBunnyUploadsEnabled } from '@/lib/feature-flags';
 import { logError } from '@/lib/logger';
 import { enforceStorageQuota } from '@/lib/storage-quota';
 
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       return apiErrors.badRequest('Title is required');
     }
 
-    if (!isBunnyUploadsFeatureEnabled()) {
-      return apiErrors.badRequest('Direct uploads are disabled by this host');
+    if (!isBunnyUploadsEnabled()) {
+      return apiErrors.badRequest('Bunny direct uploads are disabled by this host');
     }
 
     const quotaError = await enforceStorageQuota(project.workspace.ownerId, BigInt(0));

@@ -3,6 +3,7 @@ import { db } from '@/lib/db';
 import { auth, checkProjectAccess } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
 import { cleanupBunnyStreamVideosBestEffort } from '@/lib/bunny-stream-cleanup';
+import { deleteMediaFilesBestEffort } from '@/lib/r2-cleanup';
 import { buildCleanupWarnings, logCleanupWarnings } from '@/lib/cleanup-warnings';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { logError } from '@/lib/logger';
@@ -148,8 +149,17 @@ export async function DELETE(request: NextRequest, { params }: RouteParams) {
       }
     });
 
-    const bunnyCleanupResult = await cleanupBunnyStreamVideosBestEffort([bunnyRef]);
-    const cleanupInput = { bunny: bunnyCleanupResult };
+    const [bunnyCleanupResult, r2CleanupResult] = await Promise.all([
+      cleanupBunnyStreamVideosBestEffort([bunnyRef]),
+      result.version.providerId === 'r2'
+        ? deleteMediaFilesBestEffort(
+            [result.version.originalUrl, result.version.thumbnailUrl].filter((url): url is string =>
+              Boolean(url)
+            )
+          )
+        : Promise.resolve({ attempted: 0, failed: 0, failedKeys: [] }),
+    ]);
+    const cleanupInput = { bunny: bunnyCleanupResult, r2: r2CleanupResult };
     const cleanupWarnings = buildCleanupWarnings(cleanupInput);
     if (cleanupWarnings) {
       logCleanupWarnings({ entityType: 'video-version', entityId: versionId }, cleanupInput);

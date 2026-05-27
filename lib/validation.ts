@@ -91,3 +91,32 @@ export function validateOptionalUrl(
 
   return validateUrl(urlString, fieldName);
 }
+
+const SAFE_APP_RELATIVE_PATH =
+  /^\/(?:api\/upload\/(?:image|audio|video)\/[0-9a-f-]{36}\.[a-z0-9]+|placeholder-video-thumbnail\.png)$/i;
+
+export function isSafeAppRelativePath(path: string): boolean {
+  if (!path.startsWith('/') || path.includes('..')) {
+    return false;
+  }
+
+  return SAFE_APP_RELATIVE_PATH.test(path);
+}
+
+/**
+ * Accepts optional absolute http(s) URLs or safe same-origin app paths (upload proxy, placeholders).
+ */
+export function validateOptionalUrlOrAppPath(
+  urlString: string | null | undefined,
+  fieldName: string = 'URL'
+): string | null {
+  if (!urlString) {
+    return null;
+  }
+
+  if (isSafeAppRelativePath(urlString)) {
+    return null;
+  }
+
+  return validateOptionalUrl(urlString, fieldName);
+}

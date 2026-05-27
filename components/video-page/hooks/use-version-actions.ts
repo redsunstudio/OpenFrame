@@ -11,6 +11,7 @@ import {
 } from '@/lib/video-providers';
 import type { VersionActionsConfig, VideoData } from '@/components/video-page/types';
 import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { cleanupPendingR2VideoUpload, uploadVideoToR2 } from '@/lib/client/r2-video-upload';
 
 interface UseVersionActionsParams extends VersionActionsConfig {
   setVideo: Dispatch<SetStateAction<VideoData | null>>;
@@ -21,7 +22,8 @@ interface UseVersionActionsParams extends VersionActionsConfig {
 export function useVersionActions({
   projectId,
   videoId,
-  bunnyUploadsEnabled = true,
+  directUploadsEnabled = false,
+  directUploadProvider = 'bunny',
   setVideo,
   activeVersionId,
   setActiveVersionId,
@@ -58,13 +60,111 @@ export function useVersionActions({
     }
   };
 
+  const uploadNewVersionFile = async (file: File, title: string) => {
+    if (!projectId) throw new Error('Missing project');
+
+    if (directUploadProvider === 'r2') {
+      setNewVersionUploadStatus('Initializing upload...');
+      const uploaded = await uploadVideoToR2(projectId, file, {
+        onProgress: (progress) => {
+          setNewVersionUploadProgress(progress);
+          setNewVersionUploadStatus(`Uploading... ${progress}%`);
+        },
+      });
+
+      return {
+        finalVideoUrl: uploaded.proxyUrl,
+        finalProviderId: 'r2',
+        finalProviderVideoId: uploaded.objectKey,
+        finalThumbnailUrl: uploaded.thumbnailUrl || '/placeholder-video-thumbnail.png',
+        finalDuration: uploaded.duration,
+        uploadToken: uploaded.uploadToken,
+        objectKey: uploaded.objectKey,
+        reservationId: uploaded.reservationId,
+        pendingCleanup: {
+          objectKey: uploaded.objectKey,
+          uploadToken: uploaded.uploadToken,
+          reservationId: uploaded.reservationId,
+          thumbnailObjectKey: uploaded.thumbnailObjectKey,
+        },
+      };
+    }
+
+    setNewVersionUploadStatus('Initializing upload...');
+    const initRes = await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title }),
+    });
+
+    if (!initRes.ok) throw new Error('Failed to initialize upload');
+    const {
+      data: { videoId: bunnyVideoId, libraryId, signature, expirationTime, uploadToken },
+    } = await initRes.json();
+
+    await new Promise((resolve, reject) => {
+      setNewVersionUploadStatus('Uploading video...');
+      const upload = new tus.Upload(file, {
+        endpoint: 'https://video.bunnycdn.com/tusupload',
+        retryDelays: [0, 3000, 5000, 10000, 20000],
+        headers: {
+          AuthorizationSignature: signature,
+          AuthorizationExpire: expirationTime.toString(),
+          VideoId: bunnyVideoId,
+          LibraryId: libraryId,
+        },
+        metadata: {
+          filetype: file.type,
+          title,
+        },
+        onError: (error) => reject(new Error(`Upload failed: ${error.message}`)),
+        onProgress: (bytesUploaded, bytesTotal) => {
+          const percentage = ((bytesUploaded / bytesTotal) * 100).toFixed(1);
+          setNewVersionUploadProgress(Number(percentage));
+          setNewVersionUploadStatus(`Uploading... ${percentage}%`);
+        },
+        onSuccess: () => {
+          setNewVersionUploadStatus('Processing video...');
+          resolve(true);
+        },
+      });
+      upload.start();
+    });
+
+    return {
+      finalVideoUrl: `https://iframe.mediadelivery.net/embed/${libraryId}/${bunnyVideoId}`,
+      finalProviderId: 'bunny',
+      finalProviderVideoId: bunnyVideoId,
+      finalThumbnailUrl: bunnyCdnHostname
+        ? `https://${bunnyCdnHostname}/${bunnyVideoId}/thumbnail.jpg`
+        : null,
+      finalDuration: null as number | null,
+      uploadToken,
+      objectKey: null as string | null,
+      reservationId: null as string | null,
+      pendingCleanup: {
+        bunnyVideoId,
+        uploadToken,
+      },
+    };
+  };
+
   const handleCreateVersion = async () => {
     if (!projectId) return;
     setIsCreatingVersion(true);
     setNewVersionUploadStatus('');
     setNewVersionUploadProgress(0);
-    let uploadedBunnyVideoId: string | null = null;
-    let uploadedBunnyUploadToken: string | null = null;
+    let pendingCleanup:
+      | {
+          objectKey: string;
+          uploadToken: string;
+          reservationId: string | null;
+        }
+      | {
+          bunnyVideoId: string;
+          uploadToken: string;
+        }
+      | null = null;
 
     try {
       let finalVideoUrl = '';
@@ -72,6 +172,9 @@ export function useVersionActions({
       let finalProviderVideoId = '';
       let finalThumbnailUrl: string | null = null;
       let finalDuration: number | null = null;
+      let uploadToken: string | null = null;
+      let objectKey: string | null = null;
+      let reservationId: string | null = null;
 
       if (newVersionMode === 'url') {
         if (!newVersionSource) throw new Error('Invalid URL');
@@ -82,7 +185,7 @@ export function useVersionActions({
         finalThumbnailUrl = getThumbnailUrl(newVersionSource, 'large');
         finalDuration = meta?.duration || null;
       } else {
-        if (!bunnyUploadsEnabled) throw new Error('Direct uploads are disabled by this host');
+        if (!directUploadsEnabled) throw new Error('Direct uploads are disabled by this host');
         if (!newVersionFile) throw new Error('No file selected');
         let title = newVersionFile.name;
         if (newVersionLabel.trim()) {
@@ -91,55 +194,16 @@ export function useVersionActions({
           title = title.replace(/\.[^/.]+$/, '');
         }
 
-        setNewVersionUploadStatus('Initializing upload...');
-        const initRes = await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ title }),
-        });
-
-        if (!initRes.ok) throw new Error('Failed to initialize upload');
-        const {
-          data: { videoId: bunnyVideoId, libraryId, signature, expirationTime, uploadToken },
-        } = await initRes.json();
-        uploadedBunnyVideoId = bunnyVideoId;
-        uploadedBunnyUploadToken = uploadToken;
-
-        await new Promise((resolve, reject) => {
-          setNewVersionUploadStatus('Uploading video...');
-          const upload = new tus.Upload(newVersionFile, {
-            endpoint: 'https://video.bunnycdn.com/tusupload',
-            retryDelays: [0, 3000, 5000, 10000, 20000],
-            headers: {
-              AuthorizationSignature: signature,
-              AuthorizationExpire: expirationTime.toString(),
-              VideoId: bunnyVideoId,
-              LibraryId: libraryId,
-            },
-            metadata: {
-              filetype: newVersionFile.type,
-              title,
-            },
-            onError: (error) => reject(new Error(`Upload failed: ${error.message}`)),
-            onProgress: (bytesUploaded, bytesTotal) => {
-              const percentage = ((bytesUploaded / bytesTotal) * 100).toFixed(1);
-              setNewVersionUploadProgress(Number(percentage));
-              setNewVersionUploadStatus(`Uploading... ${percentage}%`);
-            },
-            onSuccess: () => {
-              setNewVersionUploadStatus('Processing video...');
-              resolve(true);
-            },
-          });
-          upload.start();
-        });
-
-        finalVideoUrl = `https://iframe.mediadelivery.net/embed/${libraryId}/${bunnyVideoId}`;
-        finalProviderId = 'bunny';
-        finalProviderVideoId = bunnyVideoId;
-        finalThumbnailUrl = bunnyCdnHostname
-          ? `https://${bunnyCdnHostname}/${bunnyVideoId}/thumbnail.jpg`
-          : null;
+        const uploaded = await uploadNewVersionFile(newVersionFile, title);
+        finalVideoUrl = uploaded.finalVideoUrl;
+        finalProviderId = uploaded.finalProviderId;
+        finalProviderVideoId = uploaded.finalProviderVideoId;
+        finalThumbnailUrl = uploaded.finalThumbnailUrl;
+        finalDuration = uploaded.finalDuration;
+        uploadToken = uploaded.uploadToken;
+        objectKey = uploaded.objectKey;
+        reservationId = uploaded.reservationId;
+        pendingCleanup = uploaded.pendingCleanup;
       }
 
       const res = await fetch(`/api/projects/${projectId}/videos/${videoId}/versions`, {
@@ -149,7 +213,9 @@ export function useVersionActions({
           videoUrl: finalVideoUrl,
           providerId: finalProviderId,
           providerVideoId: finalProviderVideoId,
-          uploadToken: uploadedBunnyUploadToken,
+          uploadToken,
+          objectKey,
+          reservationId,
           versionLabel: newVersionLabel.trim() || null,
           thumbnailUrl: finalThumbnailUrl,
           duration: finalDuration,
@@ -180,24 +246,30 @@ export function useVersionActions({
       setNewVersionSource(null);
       setNewVersionFile(null);
       setNewVersionUploadStatus('');
+      pendingCleanup = null;
     } catch (err) {
       const errorObj = err as Error;
-      if (uploadedBunnyVideoId && uploadedBunnyUploadToken) {
-        await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
-          method: 'DELETE',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            videoId: uploadedBunnyVideoId,
-            uploadToken: uploadedBunnyUploadToken,
-          }),
-        }).catch((cleanupError) => {
-          console.error('Failed to cleanup pending Bunny version upload:', cleanupError);
-        });
+      if (pendingCleanup && projectId) {
+        if ('objectKey' in pendingCleanup) {
+          await cleanupPendingR2VideoUpload(projectId, pendingCleanup);
+        } else {
+          await fetch(`/api/projects/${projectId}/videos/bunny-init`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              videoId: pendingCleanup.bunnyVideoId,
+              uploadToken: pendingCleanup.uploadToken,
+            }),
+          }).catch((cleanupError) => {
+            console.error('Failed to cleanup pending Bunny version upload:', cleanupError);
+          });
+        }
       }
       console.error('Failed to create version:', errorObj);
       toast.error(errorObj.message || 'Failed to create version');
     } finally {
       setIsCreatingVersion(false);
+      setNewVersionUploadProgress(0);
     }
   };
 
@@ -209,34 +281,28 @@ export function useVersionActions({
         `/api/projects/${projectId}/videos/${videoId}/versions/${versionToDelete}`,
         { method: 'DELETE' }
       );
-      if (res.ok) {
-        setVideo((prev) => {
-          if (!prev) return prev;
-          const remaining = prev.versions.filter((v) => v.id !== versionToDelete);
-          return { ...prev, versions: remaining };
-        });
-
-        if (activeVersionId === versionToDelete) {
-          setVideo((prev) => {
-            if (!prev) return prev;
-            const remaining = prev.versions.filter((v) => v.id !== versionToDelete);
-            if (remaining.length > 0) {
-              setActiveVersionId(remaining[0].id);
-            } else {
-              setActiveVersionId(null);
-            }
-            return prev;
-          });
-        }
-
-        setShowDeleteVersionDialog(false);
-        setVersionToDelete(null);
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Failed to delete version');
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error || 'Failed to delete version');
       }
-    } catch {
-      toast.error('Failed to delete version');
+
+      setVideo((prev) => {
+        if (!prev) return prev;
+        const remaining = prev.versions.filter((v) => v.id !== versionToDelete);
+        if (activeVersionId === versionToDelete && remaining.length > 0) {
+          const nextActive = remaining.find((v) => v.isActive) ?? remaining[0];
+          setActiveVersionId(nextActive.id);
+        }
+        return { ...prev, versions: remaining };
+      });
+
+      setShowDeleteVersionDialog(false);
+      setVersionToDelete(null);
+      toast.success('Version deleted');
+    } catch (err) {
+      const errorObj = err as Error;
+      console.error('Failed to delete version:', errorObj);
+      toast.error(errorObj.message || 'Failed to delete version');
     } finally {
       setIsDeletingVersion(false);
     }
@@ -259,10 +325,8 @@ export function useVersionActions({
     newVersionUploadStatus,
     handleNewVersionUrlChange,
     handleCreateVersion,
-
     showDeleteVersionDialog,
     setShowDeleteVersionDialog,
-    versionToDelete,
     setVersionToDelete,
     isDeletingVersion,
     handleDeleteVersion,

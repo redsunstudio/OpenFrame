@@ -185,10 +185,13 @@ export interface CommentActionsConfig {
   videoId: string;
 }
 
+export type DirectUploadProvider = 'bunny' | 'r2';
+
 export interface VersionActionsConfig {
   projectId?: string;
   videoId: string;
-  bunnyUploadsEnabled?: boolean;
+  directUploadsEnabled?: boolean;
+  directUploadProvider?: DirectUploadProvider;
 }
 
 export interface VideoPageHeaderActions {

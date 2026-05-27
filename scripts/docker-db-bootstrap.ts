@@ -82,6 +82,16 @@ async function getPublicTables(client: Client) {
   return result.rows.map((row) => row.table_name);
 }
 
+async function ensureRateLimitCleanupFunction(client: Client) {
+  await client.query(`
+    CREATE OR REPLACE FUNCTION cleanup_rate_limits() RETURNS void AS $$
+    BEGIN
+      DELETE FROM rate_limits WHERE window_start < NOW() - INTERVAL '1 hour';
+    END;
+    $$ LANGUAGE plpgsql;
+  `);
+}
+
 async function main() {
   if (!process.env.DATABASE_URL) {
     throw new Error('DATABASE_URL is required');
@@ -132,6 +142,7 @@ async function main() {
         await runPrisma(['migrate', 'resolve', '--applied', migrationName]);
       }
 
+      await ensureRateLimitCleanupFunction(client);
       console.log('Fresh database bootstrap complete');
       return;
     }

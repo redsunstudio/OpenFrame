@@ -2,6 +2,7 @@
 
 import { ProjectFilter } from './project-filter';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
+import type { DirectUploadProvider } from '@/components/video-page/types';
 
 interface SerializedProject {
   id: string;
@@ -21,7 +22,8 @@ interface DashboardClientProps {
   totalPages: number;
   canCreateProjects: boolean;
   canUploadVideos: boolean;
-  bunnyUploadsEnabled: boolean;
+  directUploadsEnabled: boolean;
+  directUploadProvider: DirectUploadProvider;
 }
 
 export function DashboardClient({
@@ -30,11 +32,15 @@ export function DashboardClient({
   totalPages,
   canCreateProjects,
   canUploadVideos,
-  bunnyUploadsEnabled,
+  directUploadsEnabled,
+  directUploadProvider,
 }: DashboardClientProps) {
   return (
     <div className="px-6 lg:px-8 py-8 w-full">
-      <VideoDragDropUploader canUpload={canUploadVideos && bunnyUploadsEnabled} />
+      <VideoDragDropUploader
+        canUpload={canUploadVideos && directUploadsEnabled}
+        directUploadProvider={directUploadProvider}
+      />
       <ProjectFilter
         projects={serializedProjects}
         workspaces={workspaces}

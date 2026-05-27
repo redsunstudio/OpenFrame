@@ -3,6 +3,7 @@
 import { youtubeProvider } from './youtube';
 import { directProvider } from './direct';
 import { bunnyProvider } from './bunny';
+import { r2Provider } from './r2';
 import type { VideoProvider, VideoSource, VideoMetadata, VideoProviderType } from './types';
 import { logError } from '@/lib/logger';
 
@@ -10,7 +11,7 @@ import { logError } from '@/lib/logger';
 export * from './types';
 
 // Registry of all available providers
-const providers: VideoProvider[] = [youtubeProvider, directProvider, bunnyProvider];
+const providers: VideoProvider[] = [youtubeProvider, directProvider, bunnyProvider, r2Provider];
 
 // Provider lookup map for quick access
 const providerMap = new Map<string, VideoProvider>(providers.map((p) => [p.id, p]));

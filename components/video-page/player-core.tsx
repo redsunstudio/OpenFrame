@@ -170,7 +170,7 @@ export const PlayerCore = memo(function PlayerCore({
         onMouseLeave={handleVideoMouseLeave}
       >
         <div className={cn('relative w-full h-full', isFullscreenMode && 'absolute inset-0')}>
-          {activeProviderId === 'bunny' ? (
+          {activeProviderId === 'bunny' || activeProviderId === 'r2' ? (
             <div
               ref={bunnyViewportRef}
               className="absolute inset-0 flex items-center justify-center bg-black"
@@ -259,7 +259,9 @@ export const PlayerCore = memo(function PlayerCore({
                   Unable To Load Video
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  The Bunny stream is unavailable right now. Please refresh this page in a moment.
+                  {activeProviderId === 'r2'
+                    ? 'This video file could not be loaded. Try refreshing the page or re-uploading the version.'
+                    : 'The Bunny stream is unavailable right now. Please refresh this page in a moment.'}
                 </p>
               </div>
             </div>

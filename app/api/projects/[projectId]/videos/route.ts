@@ -1,11 +1,13 @@
 import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { auth, checkProjectAccess } from '@/lib/auth';
-import { validateUrl, validateOptionalUrl } from '@/lib/validation';
+import { validateUrl, validateOptionalUrlOrAppPath } from '@/lib/validation';
+import { toJsonSafe } from '@/lib/json-serialize';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyProjectOwner } from '@/lib/notifications';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { verifyBunnyUploadToken } from '@/lib/bunny-upload-token';
+import { finalizeR2VideoUpload } from '@/lib/r2-video-finalize';
 import { logError } from '@/lib/logger';
 
 type RouteParams = { params: Promise<{ projectId: string }> };
@@ -97,19 +99,30 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       thumbnailUrl,
       duration,
       uploadToken,
+      objectKey,
     } = body;
 
     if (!title || !videoUrl) {
       return apiErrors.badRequest('Title and video URL are required');
     }
 
-    // Validate URLs use safe schemes (http/https only)
-    const videoUrlError = validateUrl(videoUrl, 'Video URL');
-    if (videoUrlError) {
-      return apiErrors.badRequest(videoUrlError);
+    const normalizedProviderIdEarly =
+      typeof providerId === 'string' && providerId.trim()
+        ? providerId.trim().toLowerCase()
+        : 'youtube';
+
+    if (normalizedProviderIdEarly === 'r2') {
+      if (!videoUrl.startsWith('/api/upload/video/')) {
+        return apiErrors.badRequest('Video URL must be a valid upload path');
+      }
+    } else {
+      const videoUrlError = validateUrl(videoUrl, 'Video URL');
+      if (videoUrlError) {
+        return apiErrors.badRequest(videoUrlError);
+      }
     }
 
-    const thumbnailUrlError = validateOptionalUrl(thumbnailUrl, 'Thumbnail URL');
+    const thumbnailUrlError = validateOptionalUrlOrAppPath(thumbnailUrl, 'Thumbnail URL');
     if (thumbnailUrlError) {
       return apiErrors.badRequest(thumbnailUrlError);
     }
@@ -120,6 +133,14 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         : 'youtube';
     const normalizedVideoId = typeof videoId === 'string' ? videoId.trim() : '';
     const normalizedUploadToken = typeof uploadToken === 'string' ? uploadToken.trim() : '';
+
+    let versionSizeBytes = BigInt(0);
+    let finalizedR2Session: {
+      sessionId: string;
+      reservationId: string | null;
+      billedUserId: string;
+      thumbnailProxyUrl: string;
+    } | null = null;
 
     if (normalizedProviderId === 'bunny') {
       if (!normalizedVideoId || !normalizedUploadToken) {
@@ -134,7 +155,41 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       if (!isValidUploadToken) {
         return apiErrors.forbidden('Invalid Bunny upload token');
       }
+    } else if (normalizedProviderId === 'r2') {
+      const normalizedObjectKey = typeof objectKey === 'string' ? objectKey.trim() : '';
+      if (!normalizedObjectKey || !normalizedUploadToken) {
+        return apiErrors.badRequest('R2 uploads must include objectKey and uploadToken');
+      }
+
+      const finalizeResult = await finalizeR2VideoUpload({
+        userId: session.user.id,
+        projectId,
+        videoUrl,
+        objectKey: normalizedObjectKey,
+        uploadToken: normalizedUploadToken,
+      });
+      if (!finalizeResult.ok) {
+        if (finalizeResult.status === 403) {
+          return apiErrors.forbidden(finalizeResult.error);
+        }
+        return apiErrors.badRequest(finalizeResult.error);
+      }
+
+      versionSizeBytes = finalizeResult.sizeBytes;
+      finalizedR2Session = {
+        sessionId: finalizeResult.sessionId,
+        reservationId: finalizeResult.reservationId,
+        billedUserId: finalizeResult.billedUserId,
+        thumbnailProxyUrl: finalizeResult.thumbnailProxyUrl,
+      };
     }
+
+    const persistedVideoId =
+      normalizedProviderId === 'r2'
+        ? typeof objectKey === 'string'
+          ? objectKey.trim()
+          : ''
+        : normalizedVideoId;
 
     // Get the next position
     const lastVideo = await db.video.findFirst({
@@ -144,29 +199,62 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const nextPosition = (lastVideo?.position ?? -1) + 1;
 
     // Create video with initial version
-    const video = await db.video.create({
-      data: {
-        title: title.trim(),
-        description: description?.trim() || null,
-        position: nextPosition,
-        projectId,
-        versions: {
-          create: {
-            versionNumber: 1,
-            providerId: normalizedProviderId,
-            videoId: normalizedVideoId,
-            originalUrl: videoUrl,
-            title: title.trim(),
-            thumbnailUrl: thumbnailUrl || null,
-            duration: duration || null,
-            isActive: true,
+    const video = await db.$transaction(async (tx) => {
+      if (finalizedR2Session) {
+        const consumed = await tx.videoUploadSession.updateMany({
+          where: {
+            id: finalizedR2Session.sessionId,
+            status: 'INITIATED',
+            userId: session.user.id,
+            projectId,
+            objectKey: persistedVideoId,
+          },
+          data: {
+            status: 'FINALIZED',
+            consumedAt: new Date(),
+          },
+        });
+        if (consumed.count !== 1) {
+          throw new Error('Upload session already consumed');
+        }
+        if (finalizedR2Session.reservationId) {
+          await tx.uploadReservation.deleteMany({
+            where: {
+              id: finalizedR2Session.reservationId,
+              billedUserId: finalizedR2Session.billedUserId,
+            },
+          });
+        }
+      }
+
+      return tx.video.create({
+        data: {
+          title: title.trim(),
+          description: description?.trim() || null,
+          position: nextPosition,
+          projectId,
+          versions: {
+            create: {
+              versionNumber: 1,
+              providerId: normalizedProviderId,
+              videoId: persistedVideoId,
+              originalUrl: videoUrl,
+              title: title.trim(),
+              thumbnailUrl:
+                normalizedProviderId === 'r2'
+                  ? (finalizedR2Session?.thumbnailProxyUrl ?? '/placeholder-video-thumbnail.png')
+                  : thumbnailUrl || null,
+              duration: duration || null,
+              sizeBytes: versionSizeBytes,
+              isActive: true,
+            },
           },
         },
-      },
-      include: {
-        versions: true,
-        _count: { select: { versions: true } },
-      },
+        include: {
+          versions: true,
+          _count: { select: { versions: true } },
+        },
+      });
     });
 
     // Notify project owner (fire-and-forget, skip if they added it themselves)
@@ -181,7 +269,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       }).catch((err) => logError('Notification failed:', err));
     }
 
-    const response = successResponse(video, 201);
+    const response = successResponse(toJsonSafe(video), 201);
     return withCacheControl(response, 'private, no-store');
   } catch (error) {
     logError('Error creating video:', error);
