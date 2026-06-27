@@ -106,9 +106,10 @@ export function ProjectContentClient({
   }, [videos]);
 
   const selectedCount = selectedVideoIds.length;
+  const pageVideoIds = useMemo(() => localVideos.map((video) => video.id), [localVideos]);
   const allSelected = useMemo(
-    () => allVideoIds.length > 0 && selectedCount === allVideoIds.length,
-    [allVideoIds.length, selectedCount]
+    () => pageVideoIds.length > 0 && pageVideoIds.every((id) => selectedVideoIds.includes(id)),
+    [pageVideoIds, selectedVideoIds]
   );
 
   const createQueryString = useCallback(
@@ -141,12 +142,20 @@ export function ProjectContentClient({
   }, []);
 
   const handleSelectAll = useCallback(() => {
-    setSelectedVideoIds(allVideoIds);
-  }, [allVideoIds]);
+    // Scope selection to the current page only. Selecting every video across
+    // every page from a single button is too easy to trigger by accident when
+    // the user only meant the videos they can see.
+    setSelectedVideoIds((prev) => {
+      const next = new Set(prev);
+      pageVideoIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+  }, [pageVideoIds]);
 
   const handleDeselectAll = useCallback(() => {
-    setSelectedVideoIds([]);
-  }, []);
+    const pageIds = new Set(pageVideoIds);
+    setSelectedVideoIds((prev) => prev.filter((id) => !pageIds.has(id)));
+  }, [pageVideoIds]);
 
   const handleClearSelection = useCallback(() => {
     setSelectedVideoIds([]);
@@ -377,7 +386,13 @@ export function ProjectContentClient({
               size="sm"
               onClick={allSelected ? handleDeselectAll : handleSelectAll}
             >
-              {allSelected ? 'Deselect all' : 'Select all'}
+              {totalPages > 1
+                ? allSelected
+                  ? 'Deselect page'
+                  : 'Select page'
+                : allSelected
+                  ? 'Deselect all'
+                  : 'Select all'}
             </Button>
             <Button variant="ghost" size="sm" onClick={handleClearSelection}>
               Cancel
