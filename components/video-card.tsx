@@ -16,6 +16,8 @@ import {
   Pencil,
   Plus,
   Trash2,
+  CheckSquare,
+  Check,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -53,6 +55,7 @@ import {
   type VideoSource,
 } from '@/lib/video-providers';
 import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { cn } from '@/lib/utils';
 
 interface VideoCardProps {
   video: {
@@ -66,10 +69,25 @@ interface VideoCardProps {
   };
   projectId: string;
   canManage: boolean;
+  canSelect?: boolean;
+  selectionMode?: boolean;
+  selected?: boolean;
+  onEnterSelectionMode?: () => void;
+  onSelectedChange?: (selected: boolean) => void;
   onDeleted?: (videoId: string) => void;
 }
 
-export function VideoCard({ video, projectId, canManage, onDeleted }: VideoCardProps) {
+export function VideoCard({
+  video,
+  projectId,
+  canManage,
+  canSelect = false,
+  selectionMode = false,
+  selected = false,
+  onEnterSelectionMode,
+  onSelectedChange,
+  onDeleted,
+}: VideoCardProps) {
   const router = useRouter();
   const [imgError, setImgError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
@@ -204,13 +222,44 @@ export function VideoCard({ video, projectId, canManage, onDeleted }: VideoCardP
   return (
     <>
       <div className="relative">
+        {selectionMode && (
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={selected}
+            aria-label={`Select ${video.title}`}
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onSelectedChange?.(!selected);
+            }}
+            className={cn(
+              'absolute left-3 top-3 z-20 flex h-5 w-5 items-center justify-center rounded-sm border-2 transition-colors',
+              selected
+                ? 'border-primary bg-primary text-primary-foreground shadow-sm'
+                : 'border-border bg-background/95 text-transparent shadow-sm backdrop-blur hover:border-primary/50'
+            )}
+          >
+            <Check className="h-3 w-3" strokeWidth={3} />
+          </button>
+        )}
         <Card
-          className={`group overflow-hidden transition-colors hover:bg-accent/50 cursor-pointer ${
-            isDeleting ? 'pointer-events-none opacity-70' : ''
-          }`}
+          className={cn(
+            'group overflow-hidden transition-colors',
+            selectionMode ? 'cursor-pointer' : 'hover:bg-accent/50 cursor-pointer',
+            selected && selectionMode && 'ring-2 ring-primary/40 border-primary/30',
+            isDeleting && 'pointer-events-none opacity-70'
+          )}
+          onClick={
+            selectionMode
+              ? (event) => {
+                  event.preventDefault();
+                  onSelectedChange?.(!selected);
+                }
+              : undefined
+          }
         >
-          <Link href={`/projects/${projectId}/videos/${video.id}`}>
-            {/* Thumbnail */}
+          {selectionMode ? (
             <div className="relative aspect-video bg-muted overflow-hidden">
               {imgError ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
@@ -218,19 +267,15 @@ export function VideoCard({ video, projectId, canManage, onDeleted }: VideoCardP
                   <span className="text-xs text-muted-foreground font-medium">
                     Processing thumbnail...
                   </span>
-                  <span className="text-[11px] text-muted-foreground/90">
-                    Video may already be playable
-                  </span>
                 </div>
               ) : resolvedThumbnailUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
                   src={`${resolvedThumbnailUrl}${retryKey ? `?t=${retryKey}` : ''}`}
                   alt={video.title}
-                  className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+                  className="absolute inset-0 w-full h-full object-cover"
                   onError={() => {
                     setImgError(true);
-                    // Check again after 10 seconds in case Bunny is still processing
                     setTimeout(() => {
                       setRetryKey(Date.now());
                       setImgError(false);
@@ -242,37 +287,95 @@ export function VideoCard({ video, projectId, canManage, onDeleted }: VideoCardP
                   Thumbnail unavailable
                 </div>
               )}
-              {!imgError && (
-                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                  <Play className="h-12 w-12 text-white" fill="white" />
-                </div>
-              )}
             </div>
-          </Link>
+          ) : (
+            <Link href={`/projects/${projectId}/videos/${video.id}`}>
+              {/* Thumbnail */}
+              <div className="relative aspect-video bg-muted overflow-hidden">
+                {imgError ? (
+                  <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
+                    <span className="text-xs text-muted-foreground font-medium">
+                      Processing thumbnail...
+                    </span>
+                    <span className="text-[11px] text-muted-foreground/90">
+                      Video may already be playable
+                    </span>
+                  </div>
+                ) : resolvedThumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={`${resolvedThumbnailUrl}${retryKey ? `?t=${retryKey}` : ''}`}
+                    alt={video.title}
+                    className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
+                    onError={() => {
+                      setImgError(true);
+                      // Check again after 10 seconds in case Bunny is still processing
+                      setTimeout(() => {
+                        setRetryKey(Date.now());
+                        setImgError(false);
+                      }, 10000);
+                    }}
+                  />
+                ) : (
+                  <div className="absolute inset-0 flex items-center justify-center bg-muted/80 text-xs text-muted-foreground font-medium">
+                    Thumbnail unavailable
+                  </div>
+                )}
+                {!imgError && (
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                    <Play className="h-12 w-12 text-white" fill="white" />
+                  </div>
+                )}
+              </div>
+            </Link>
+          )}
 
           <CardContent className="p-4">
             <div className="flex items-start justify-between gap-2">
-              <Link href={`/projects/${projectId}/videos/${video.id}`} className="min-w-0 flex-1">
-                <h3 className="font-medium truncate">{video.title}</h3>
-                <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
-                  <span className="flex items-center gap-1">
-                    <Badge variant="secondary" className="text-xs">
-                      v{video.currentVersion}
-                    </Badge>
-                    <span className="text-xs">{video.duration}</span>
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    {video.commentCount}
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <Clock className="h-3.5 w-3.5" />
-                    {video.lastUpdated}
-                  </span>
+              {selectionMode ? (
+                <div className="min-w-0 flex-1">
+                  <h3 className="font-medium truncate">{video.title}</h3>
+                  <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        v{video.currentVersion}
+                      </Badge>
+                      <span className="text-xs">{video.duration}</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      {video.commentCount}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5" />
+                      {video.lastUpdated}
+                    </span>
+                  </div>
                 </div>
-              </Link>
+              ) : (
+                <Link href={`/projects/${projectId}/videos/${video.id}`} className="min-w-0 flex-1">
+                  <h3 className="font-medium truncate">{video.title}</h3>
+                  <div className="flex items-center gap-3 mt-1 text-sm text-muted-foreground">
+                    <span className="flex items-center gap-1">
+                      <Badge variant="secondary" className="text-xs">
+                        v{video.currentVersion}
+                      </Badge>
+                      <span className="text-xs">{video.duration}</span>
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <MessageSquare className="h-3.5 w-3.5" />
+                      {video.commentCount}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Clock className="h-3.5 w-3.5" />
+                      {video.lastUpdated}
+                    </span>
+                  </div>
+                </Link>
+              )}
 
-              {canManage ? (
+              {canManage && !selectionMode ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -286,6 +389,12 @@ export function VideoCard({ video, projectId, canManage, onDeleted }: VideoCardP
                     </Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
+                    {canSelect && (
+                      <DropdownMenuItem onSelect={() => onEnterSelectionMode?.()}>
+                        <CheckSquare className="mr-2 h-4 w-4" />
+                        Select
+                      </DropdownMenuItem>
+                    )}
                     <DropdownMenuItem asChild>
                       <Link href={`/projects/${projectId}/videos/${video.id}/share`}>
                         <Share2 className="mr-2 h-4 w-4" />
@@ -306,6 +415,25 @@ export function VideoCard({ video, projectId, canManage, onDeleted }: VideoCardP
                     >
                       <Trash2 className="mr-2 h-4 w-4" />
                       Delete
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : canSelect && !selectionMode ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 shrink-0"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem onSelect={() => onEnterSelectionMode?.()}>
+                      <CheckSquare className="mr-2 h-4 w-4" />
+                      Select
                     </DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>

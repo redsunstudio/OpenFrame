@@ -110,7 +110,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { name, description, visibility } = body;
+    const { name, description, visibility, allowDownloads } = body;
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim().length === 0) {
@@ -133,11 +133,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (visibility !== undefined && !VALID_VISIBILITY.includes(visibility)) {
       return apiErrors.badRequest('Invalid visibility value');
     }
+    if (allowDownloads !== undefined && typeof allowDownloads !== 'boolean') {
+      return apiErrors.badRequest('allowDownloads must be a boolean');
+    }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description?.trim() || null;
     if (visibility !== undefined) updateData.visibility = visibility;
+    if (allowDownloads !== undefined) updateData.allowDownloads = allowDownloads;
 
     const project = await db.project.update({
       where: { id: projectId },

@@ -8,6 +8,7 @@ import { cleanupBunnyStreamVideosBestEffort } from '@/lib/bunny-stream-cleanup';
 import { buildCleanupWarnings, logCleanupWarnings } from '@/lib/cleanup-warnings';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { logError } from '@/lib/logger';
+import { canDownloadProjectMedia } from '@/lib/project-download';
 
 type RouteParams = { params: Promise<{ projectId: string; videoId: string }> };
 
@@ -123,18 +124,19 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return apiErrors.forbidden('Access denied');
     }
 
+    const canDownload = canDownloadProjectMedia(video.project, access);
     const response = successResponse({
       ...video,
       isAuthenticated: !!session?.user?.id,
       currentUserId: session?.user?.id || null,
       currentUserName: session?.user?.name || null,
-      canDownload: access.hasAccess,
+      canDownload,
       canManageTags: access.canEdit,
       canResolveComments: access.canEdit,
       canRequestApproval: access.canEdit,
       canShareVideo: access.canEdit,
       canUploadAssets: access.hasAccess,
-      canDownloadAssets: !!session?.user?.id && access.hasAccess,
+      canDownloadAssets: canDownload,
     });
 
     return withCacheControl(response, 'private, no-cache');

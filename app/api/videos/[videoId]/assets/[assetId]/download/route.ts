@@ -85,8 +85,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const context = await getVideoAssetAccessContext(request, videoId, 'VIEW');
     if (!context) return apiErrors.notFound('Video');
     if (!context.hasViewAccess) return apiErrors.forbidden('Access denied');
-    if (!context.viewerUserId || !context.canDownloadAssets) {
-      return apiErrors.forbidden('Asset downloads require an authenticated account');
+    if (!context.canDownloadAssets) {
+      return apiErrors.forbidden('Downloads are disabled for this project');
     }
 
     const asset = await db.videoAsset.findFirst({

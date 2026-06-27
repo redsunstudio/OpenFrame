@@ -8,6 +8,7 @@ import { resolveServerBunnyCdnHostname } from '@/lib/bunny-cdn';
 import { NextRequest } from 'next/server';
 import { DownloadEgressSource } from '@prisma/client';
 import { logError } from '@/lib/logger';
+import { canDownloadProjectMedia } from '@/lib/project-download';
 
 type RouteParams = { params: Promise<{ versionId: string }> };
 type BunnyDownloadSourcePreference = 'auto' | 'original' | 'compressed';
@@ -305,7 +306,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
           requiresPassword: false,
         };
     const canDownloadViaShareLink = shareAccess.hasAccess && shareAccess.canDownload;
-    if (!access.hasAccess && !canDownloadViaShareLink) {
+    const canDownloadViaMembership = canDownloadProjectMedia(version.video.project, access);
+    if (!canDownloadViaMembership && !canDownloadViaShareLink) {
       return apiErrors.forbidden('Access denied');
     }
 

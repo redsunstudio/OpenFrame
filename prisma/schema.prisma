@@ -224,6 +224,9 @@ model Project {
   
   // Visibility
   visibility  ProjectVisibility @default(PRIVATE)
+
+  // Whether non-admin viewers may download project media
+  allowDownloads Boolean @default(false)
   
   // Ownership
   ownerId     String

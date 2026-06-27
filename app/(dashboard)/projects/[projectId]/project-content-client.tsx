@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -15,13 +15,31 @@ import {
   Globe,
   UserPlus,
   Lock,
+  Download,
+  Loader2,
+  Trash2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { VideoCard } from '@/components/video-card';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import type { DirectUploadProvider } from '@/components/video-page/types';
+import {
+  runProjectDownloadManifest,
+  type ProjectDownloadManifest,
+} from '@/lib/client/project-download';
 
 interface SerializedVideo {
   id: string;
@@ -39,12 +57,15 @@ interface ProjectContentClientProps {
     name: string;
     description: string | null;
     visibility: string;
+    allowDownloads: boolean;
     workspace: { id: string; name: string } | null;
     members: { role: string }[];
   };
   projectId: string;
   videos: SerializedVideo[];
+  allVideoIds: string[];
   canEdit: boolean;
+  canDownloadProject: boolean;
   isOwner: boolean;
   workspaceRole: string | null;
   totalPages: number;
@@ -57,7 +78,9 @@ export function ProjectContentClient({
   project,
   projectId,
   videos,
+  allVideoIds,
   canEdit,
+  canDownloadProject,
   isOwner,
   totalPages,
   currentPage,
@@ -68,10 +91,23 @@ export function ProjectContentClient({
   const searchParams = useSearchParams();
   const sortOrder = searchParams.get('sort') || 'desc';
   const [localVideos, setLocalVideos] = useState<SerializedVideo[]>(videos);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [isDownloading, setIsDownloading] = useState(false);
+  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
+  const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
+
+  const canSelectVideos = canDownloadProject || canEdit;
 
   useEffect(() => {
     setLocalVideos(videos);
   }, [videos]);
+
+  const selectedCount = selectedVideoIds.length;
+  const allSelected = useMemo(
+    () => allVideoIds.length > 0 && selectedCount === allVideoIds.length,
+    [allVideoIds.length, selectedCount]
+  );
 
   const createQueryString = useCallback(
     (name: string, value: string) => {
@@ -89,7 +125,111 @@ export function ProjectContentClient({
 
   const handleVideoDeleted = useCallback((videoId: string) => {
     setLocalVideos((prev) => prev.filter((video) => video.id !== videoId));
+    setSelectedVideoIds((prev) => prev.filter((id) => id !== videoId));
   }, []);
+
+  const toggleVideoSelection = useCallback((videoId: string, selected: boolean) => {
+    setSelectedVideoIds((prev) => {
+      if (selected) {
+        if (prev.includes(videoId)) return prev;
+        return [...prev, videoId];
+      }
+      return prev.filter((id) => id !== videoId);
+    });
+  }, []);
+
+  const handleSelectAll = useCallback(() => {
+    setSelectedVideoIds(allVideoIds);
+  }, [allVideoIds]);
+
+  const handleDeselectAll = useCallback(() => {
+    setSelectedVideoIds([]);
+  }, []);
+
+  const handleClearSelection = useCallback(() => {
+    setSelectedVideoIds([]);
+    setSelectionMode(false);
+  }, []);
+
+  const handleEnterSelectionMode = useCallback(() => {
+    setSelectionMode(true);
+  }, []);
+
+  const startProjectDownload = useCallback(
+    async (videoIds?: string[]) => {
+      if (!canDownloadProject || isDownloading) return;
+
+      const query =
+        videoIds && videoIds.length > 0
+          ? `?videoIds=${encodeURIComponent(videoIds.join(','))}`
+          : '';
+
+      setIsDownloading(true);
+      try {
+        const response = await fetch(`/api/projects/${projectId}/download${query}`, {
+          cache: 'no-store',
+        });
+        const body = await response.json().catch(() => null);
+
+        if (!response.ok) {
+          const message =
+            typeof body?.error === 'string' ? body.error : 'Failed to prepare project download';
+          toast.error(message);
+          return;
+        }
+
+        const manifest = body?.data as ProjectDownloadManifest | undefined;
+        if (!manifest?.files?.length) {
+          toast.error('No downloadable files found');
+          return;
+        }
+
+        toast.info(`Starting download of ${manifest.totalFiles} files…`);
+        await runProjectDownloadManifest(manifest);
+        toast.success(`Started ${manifest.totalFiles} file downloads`);
+      } catch {
+        toast.error('Failed to start project download');
+      } finally {
+        setIsDownloading(false);
+      }
+    },
+    [canDownloadProject, isDownloading, projectId]
+  );
+
+  const handleDeleteSelected = useCallback(async () => {
+    if (!canEdit || selectedCount === 0 || isDeletingSelected) return;
+
+    setIsDeletingSelected(true);
+    try {
+      const response = await fetch(`/api/projects/${projectId}/videos/bulk-delete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ videoIds: selectedVideoIds }),
+      });
+      const body = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const message =
+          typeof body?.error === 'string' ? body.error : 'Failed to delete selected videos';
+        toast.error(message);
+        return;
+      }
+
+      const deletedIds = new Set(selectedVideoIds);
+      setLocalVideos((prev) => prev.filter((video) => !deletedIds.has(video.id)));
+      setSelectedVideoIds([]);
+      setSelectionMode(false);
+      setShowDeleteSelectedDialog(false);
+      toast.success(
+        typeof body?.data?.message === 'string' ? body.data.message : 'Selected videos deleted'
+      );
+      router.refresh();
+    } catch {
+      toast.error('Failed to delete selected videos');
+    } finally {
+      setIsDeletingSelected(false);
+    }
+  }, [canEdit, isDeletingSelected, projectId, router, selectedCount, selectedVideoIds]);
 
   return (
     <>
@@ -131,7 +271,6 @@ export function ProjectContentClient({
         </div>
 
         <div className="flex flex-wrap items-center gap-2 mt-4 sm:mt-0">
-          {/* Sort Button - Left of Share */}
           <Button
             variant="outline"
             size="sm"
@@ -153,6 +292,21 @@ export function ProjectContentClient({
               </>
             )}
           </Button>
+          {canDownloadProject && localVideos.length > 0 && !selectionMode && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => startProjectDownload()}
+              disabled={isDownloading}
+            >
+              {isDownloading ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Download className="h-4 w-4 mr-2" />
+              )}
+              Download project
+            </Button>
+          )}
           {canEdit && (
             <Button variant="outline" size="sm" asChild>
               <Link href={`/projects/${projectId}/share`}>
@@ -188,6 +342,57 @@ export function ProjectContentClient({
         </div>
       </div>
 
+      {selectionMode && (
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+          <span className="text-sm font-medium">Selection mode</span>
+          <span className="text-sm text-muted-foreground">
+            {selectedCount > 0 ? `${selectedCount} selected` : 'None selected'}
+          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={allSelected ? handleDeselectAll : handleSelectAll}
+            >
+              {allSelected ? 'Deselect all' : 'Select all'}
+            </Button>
+            <Button variant="ghost" size="sm" onClick={handleClearSelection}>
+              Cancel
+            </Button>
+            {canDownloadProject && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => startProjectDownload(selectedVideoIds)}
+                disabled={isDownloading || selectedCount === 0}
+              >
+                {isDownloading ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Download selected
+              </Button>
+            )}
+            {canEdit && (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={() => setShowDeleteSelectedDialog(true)}
+                disabled={selectedCount === 0 || isDeletingSelected}
+              >
+                {isDeletingSelected ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Trash2 className="h-4 w-4 mr-2" />
+                )}
+                Delete selected
+              </Button>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* Videos Grid */}
       {localVideos.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -197,6 +402,11 @@ export function ProjectContentClient({
               video={video}
               projectId={projectId}
               canManage={canEdit}
+              canSelect={canSelectVideos}
+              selectionMode={selectionMode}
+              selected={selectedVideoIds.includes(video.id)}
+              onEnterSelectionMode={handleEnterSelectionMode}
+              onSelectedChange={(selected) => toggleVideoSelection(video.id, selected)}
               onDeleted={handleVideoDeleted}
             />
           ))}
@@ -250,6 +460,34 @@ export function ProjectContentClient({
           </Button>
         </div>
       )}
+
+      <AlertDialog open={showDeleteSelectedDialog} onOpenChange={setShowDeleteSelectedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Delete {selectedCount} video{selectedCount === 1 ? '' : 's'}?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This will permanently delete the selected videos, all of their versions, comments, and
+              stored media from Bunny and Cloudflare R2. This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeletingSelected}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(event) => {
+                event.preventDefault();
+                void handleDeleteSelected();
+              }}
+              disabled={isDeletingSelected || selectedCount === 0}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeletingSelected && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              Delete selected
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }

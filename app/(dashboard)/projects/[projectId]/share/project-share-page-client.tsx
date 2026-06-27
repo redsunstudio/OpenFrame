@@ -38,6 +38,7 @@ interface ProjectSharePageProps {
 export default function ProjectSharePageClient({ projectId }: ProjectSharePageProps) {
   const [projectName, setProjectName] = useState('');
   const [projectVisibility, setProjectVisibility] = useState('');
+  const [allowDownloads, setAllowDownloads] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [members, setMembers] = useState<ProjectMember[]>([]);
   const [copied, setCopied] = useState(false);
@@ -56,6 +57,7 @@ export default function ProjectSharePageClient({ projectId }: ProjectSharePagePr
           const project = data.data;
           setProjectName(project.name || '');
           setProjectVisibility(project.visibility || 'PRIVATE');
+          setAllowDownloads(project.allowDownloads ?? false);
           setMembers(project.members || []);
         }
       })
@@ -174,6 +176,14 @@ export default function ProjectSharePageClient({ projectId }: ProjectSharePagePr
                 <div className="flex-1">
                   <div className="font-medium">{visibilityInfo.title}</div>
                   <div className="text-sm opacity-80">{visibilityInfo.description}</div>
+                  {(projectVisibility === 'PUBLIC' || projectVisibility === 'INVITE') && (
+                    <div className="text-sm opacity-80 mt-1">
+                      Viewer downloads:{' '}
+                      {allowDownloads
+                        ? 'enabled (includes anonymous visitors on public links)'
+                        : 'disabled'}
+                    </div>
+                  )}
                 </div>
                 <Link href={`/projects/${projectId}/settings`}>
                   <Button variant="ghost" size="sm" className="text-current hover:bg-current/10">

@@ -5,6 +5,7 @@ import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response
 import { rateLimit } from '@/lib/rate-limit';
 import { validateShareLinkAccess } from '@/lib/share-links';
 import { getShareSessionFromRequest } from '@/lib/share-session';
+import { canDownloadProjectMedia } from '@/lib/project-download';
 import { getGuestIdentityFromRequest } from '@/lib/guest-identity';
 import { logError } from '@/lib/logger';
 
@@ -190,10 +191,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const canCommentWithMembership = access.hasAccess;
     const canCommentWithShareLink =
       shareAccess.canComment && (session?.user?.id ? true : shareAccess.allowGuests);
-    const canDownloadWithMembership = access.hasAccess;
+    const canDownloadWithMembership = canDownloadProjectMedia(video.project, access);
     const canDownloadWithShareLink = shareAccess.hasAccess && shareAccess.canDownload;
     const canUploadAssets = canCommentWithMembership || canCommentWithShareLink;
-    const canDownloadAssets = !!session?.user?.id && (access.hasAccess || shareAccess.hasAccess);
+    const canDownloadAssets =
+      (access.hasAccess || shareAccess.hasAccess) &&
+      (canDownloadWithMembership || canDownloadWithShareLink);
     const response = successResponse({
       ...videoData,
       versions,
@@ -202,6 +205,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         name: project.name,
         ownerId: project.ownerId,
         visibility: project.visibility,
+        allowDownloads: project.allowDownloads,
       },
       isAuthenticated: !!session?.user?.id,
       currentUserId: session?.user?.id || null,

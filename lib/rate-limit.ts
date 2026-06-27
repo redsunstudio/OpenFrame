@@ -70,6 +70,7 @@ export const RATE_LIMIT_CONFIGS: Record<string, RateLimitConfig> = {
   // Downloads — strict enough to limit upstream probing/cost abuse
   'video-download': { windowMs: 60 * 1000, maxRequests: 8 }, // 8 per minute
   'video-download-prepare': { windowMs: 60 * 1000, maxRequests: 5 }, // 5 per minute
+  'project-download': { windowMs: 60 * 1000, maxRequests: 3 }, // 3 per minute
 
   // Email verification
   'verify-email': { windowMs: 15 * 60 * 1000, maxRequests: 20 }, // 20 per 15 min (clicked link)

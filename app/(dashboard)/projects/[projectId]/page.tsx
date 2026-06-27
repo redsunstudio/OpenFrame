@@ -6,6 +6,7 @@ import { auth, checkProjectAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { ProjectContentClient } from './project-content-client';
 import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
+import { canDownloadProjectMedia } from '@/lib/project-download';
 
 function formatDuration(seconds: number | null): string {
   if (!seconds) return '0:00';
@@ -102,7 +103,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
   }
 
   // Fetch videos separately utilizing bounds
-  const [paginatedVideos, totalVideos] = await Promise.all([
+  const [paginatedVideos, totalVideos, allVideoIds] = await Promise.all([
     db.video.findMany({
       where: { projectId: project.id },
       skip,
@@ -121,6 +122,11 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
     }),
     db.video.count({
       where: { projectId: project.id },
+    }),
+    db.video.findMany({
+      where: { projectId: project.id },
+      select: { id: true },
+      orderBy: [{ position: 'asc' }, { id: 'asc' }],
     }),
   ]);
 
@@ -153,10 +159,13 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
       workspaceRole === 'ADMIN');
   const isAuthenticated = !!session?.user?.id;
 
+  const canDownloadProject = canDownloadProjectMedia(project, access);
+
   const projectData = {
     name: project.name,
     description: project.description,
     visibility: project.visibility,
+    allowDownloads: project.allowDownloads,
     workspace: project.workspace,
     members: project.members,
   };
@@ -180,7 +189,9 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
             project={projectData}
             projectId={projectId}
             videos={videos}
+            allVideoIds={allVideoIds.map((video) => video.id)}
             canEdit={false}
+            canDownloadProject={canDownloadProject}
             isOwner={false}
             workspaceRole={null}
             totalPages={totalPages}
@@ -209,7 +220,9 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
         project={projectData}
         projectId={projectId}
         videos={videos}
+        allVideoIds={allVideoIds.map((video) => video.id)}
         canEdit={canEdit}
+        canDownloadProject={canDownloadProject}
         isOwner={isOwner}
         workspaceRole={workspaceRole}
         totalPages={totalPages}

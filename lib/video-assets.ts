@@ -5,6 +5,7 @@ import { db } from '@/lib/db';
 import { getGuestIdentityFromRequest } from '@/lib/guest-identity';
 import { getShareSessionFromRequest } from '@/lib/share-session';
 import { validateShareLinkAccess } from '@/lib/share-links';
+import { canDownloadProjectMedia } from '@/lib/project-download';
 
 const IMAGE_PROXY_PREFIX = '/api/upload/image/';
 const AUDIO_PROXY_PREFIX = '/api/upload/audio/';
@@ -29,6 +30,7 @@ export type VideoAssetAccessContext = {
       ownerId: string;
       workspaceId: string;
       visibility: string;
+      allowDownloads: boolean;
       workspace: {
         id: string;
         ownerId: string;
@@ -147,6 +149,7 @@ export async function getVideoAssetAccessContext(
           ownerId: true,
           workspaceId: true,
           visibility: true,
+          allowDownloads: true,
           workspace: {
             select: {
               id: true,
@@ -184,7 +187,9 @@ export async function getVideoAssetAccessContext(
   const canCommentWithShare =
     shareAccess.canComment && (session?.user?.id ? true : shareAccess.allowGuests);
   const canUploadAssets = canCommentWithMembership || canCommentWithShare;
-  const canDownloadAssets = !!session?.user?.id && hasViewAccess;
+  const canDownloadWithMembership = canDownloadProjectMedia(video.project, access);
+  const canDownloadWithShare = shareAccess.hasAccess && shareAccess.canDownload;
+  const canDownloadAssets = hasViewAccess && (canDownloadWithMembership || canDownloadWithShare);
 
   const viewerUserId = session?.user?.id ?? null;
   const viewerGuestIdentityId = viewerUserId ? null : getGuestIdentityFromRequest(request);

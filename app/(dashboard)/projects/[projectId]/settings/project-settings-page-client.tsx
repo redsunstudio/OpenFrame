@@ -85,6 +85,7 @@ export default function ProjectSettingsPageClient({ projectId }: ProjectSettings
     name: '',
     description: '',
     visibility: 'PRIVATE' as Visibility,
+    allowDownloads: false,
   });
 
   // Tag management state
@@ -109,6 +110,7 @@ export default function ProjectSettingsPageClient({ projectId }: ProjectSettings
             name: project.name || '',
             description: project.description || '',
             visibility: project.visibility || 'PRIVATE',
+            allowDownloads: project.allowDownloads ?? false,
           });
         }
       })
@@ -349,6 +351,48 @@ export default function ProjectSettingsPageClient({ projectId }: ProjectSettings
                       </button>
                     ))}
                   </div>
+                </div>
+
+                <div className="space-y-3 rounded-xl border p-4">
+                  <div>
+                    <Label className="text-sm font-medium">Project downloads</Label>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Allow viewers to download project files. Project admins can always download.
+                      When enabled on a public project, anyone with the link can download files
+                      without signing in.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setFormData((prev) => ({ ...prev, allowDownloads: !prev.allowDownloads }))
+                    }
+                    disabled={isSaving}
+                    className={`w-full flex items-center justify-between gap-4 p-4 rounded-xl border-2 text-left transition-all ${
+                      formData.allowDownloads
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary/20'
+                        : 'border-border hover:border-border/80 hover:bg-accent/50'
+                    }`}
+                  >
+                    <div>
+                      <div className="font-medium">Allow viewer downloads</div>
+                      <div className="text-sm text-muted-foreground">
+                        Public and invited viewers can download files when enabled. On public
+                        projects this includes unauthenticated visitors.
+                      </div>
+                    </div>
+                    <div
+                      className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center ${
+                        formData.allowDownloads
+                          ? 'border-primary bg-primary'
+                          : 'border-muted-foreground/30'
+                      }`}
+                    >
+                      {formData.allowDownloads && (
+                        <div className="w-2 h-2 rounded-full bg-primary-foreground" />
+                      )}
+                    </div>
+                  </button>
                 </div>
 
                 {error && (
