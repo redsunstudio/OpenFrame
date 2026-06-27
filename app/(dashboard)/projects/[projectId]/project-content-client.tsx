@@ -70,6 +70,7 @@ interface ProjectContentClientProps {
   workspaceRole: string | null;
   totalPages: number;
   currentPage: number;
+  pageSize: number;
   directUploadsEnabled: boolean;
   directUploadProvider: DirectUploadProvider;
 }
@@ -84,6 +85,7 @@ export function ProjectContentClient({
   isOwner,
   totalPages,
   currentPage,
+  pageSize,
   directUploadsEnabled,
   directUploadProvider,
 }: ProjectContentClientProps) {
@@ -223,13 +225,34 @@ export function ProjectContentClient({
       toast.success(
         typeof body?.data?.message === 'string' ? body.data.message : 'Selected videos deleted'
       );
-      router.refresh();
+
+      // The current page may now be out of range (e.g. we deleted every video
+      // on it). Clamp to the last valid page so the refresh lands on a page
+      // that still has videos instead of showing "No videos yet".
+      const remainingTotal = allVideoIds.filter((id) => !deletedIds.has(id)).length;
+      const newTotalPages = Math.max(1, Math.ceil(remainingTotal / pageSize));
+      if (currentPage > newTotalPages) {
+        router.push(`?${createQueryString('page', newTotalPages.toString())}`);
+      } else {
+        router.refresh();
+      }
     } catch {
       toast.error('Failed to delete selected videos');
     } finally {
       setIsDeletingSelected(false);
     }
-  }, [canEdit, isDeletingSelected, projectId, router, selectedCount, selectedVideoIds]);
+  }, [
+    allVideoIds,
+    canEdit,
+    createQueryString,
+    currentPage,
+    isDeletingSelected,
+    pageSize,
+    projectId,
+    router,
+    selectedCount,
+    selectedVideoIds,
+  ]);
 
   return (
     <>

@@ -196,6 +196,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
             workspaceRole={null}
             totalPages={totalPages}
             currentPage={page}
+            pageSize={pageSize}
             directUploadsEnabled={directUploadsEnabled}
             directUploadProvider={directUploadProvider}
           />
@@ -227,6 +228,7 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
         workspaceRole={workspaceRole}
         totalPages={totalPages}
         currentPage={page}
+        pageSize={pageSize}
         directUploadsEnabled={directUploadsEnabled}
         directUploadProvider={directUploadProvider}
       />
