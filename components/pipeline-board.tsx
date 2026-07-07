@@ -6,7 +6,6 @@ import Link from 'next/link';
 import { Plus, MessageSquare, Film, Loader2, Lightbulb } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import {
@@ -28,10 +27,12 @@ import { cn } from '@/lib/utils';
 export const PIPELINE_STAGES = [
   { key: 'IDEA', label: 'Idea' },
   { key: 'FILMED', label: 'Filmed' },
-  { key: 'EDITING', label: 'Editing' },
+  { key: 'EDITING', label: 'In edit' },
   { key: 'REVIEW', label: 'In review' },
+  { key: 'CHANGES', label: 'Changes' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'PUBLISHED', label: 'Published' },
+  { key: 'REJECTED', label: 'Rejected' },
 ] as const;
 
 type StageKey = (typeof PIPELINE_STAGES)[number]['key'];
@@ -41,8 +42,10 @@ const STAGE_DOT: Record<StageKey, string> = {
   FILMED: 'bg-amber-500',
   EDITING: 'bg-orange-500',
   REVIEW: 'bg-primary',
+  CHANGES: 'bg-blue-400',
   APPROVED: 'bg-green-500',
   PUBLISHED: 'bg-green-700',
+  REJECTED: 'bg-red-500',
 };
 
 interface PipelineVideo {
@@ -119,87 +122,84 @@ export function PipelineBoard({ projectId, videos, canEdit }: PipelineBoardProps
         )}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+      <div className="space-y-6">
         {PIPELINE_STAGES.map((stage) => {
           const items = videos.filter((v) => v.status === stage.key);
           if (items.length === 0 && stage.key !== 'IDEA') return null;
           return (
-            <Card key={stage.key}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-2 mb-3">
-                  <span className={cn('h-2 w-2 rounded-full', STAGE_DOT[stage.key])} />
-                  <span className="text-sm font-medium">{stage.label}</span>
-                  <span className="text-xs text-muted-foreground ml-auto font-mono">
-                    {items.length}
-                  </span>
-                </div>
-                <div className="space-y-2">
-                  {items.length === 0 && (
-                    <p className="text-xs text-muted-foreground py-2">
-                      Nothing here yet{canEdit ? ' — add the next video idea.' : '.'}
-                    </p>
-                  )}
-                  {items.map((v) => (
-                    <div key={v.id} className="rounded-lg border p-3 bg-background">
+            <div key={stage.key}>
+              <div className="flex items-center gap-2 mb-2">
+                <span className={cn('h-2 w-2 rounded-full', STAGE_DOT[stage.key])} />
+                <span className="text-sm font-semibold">{stage.label}</span>
+                <span className="text-xs text-muted-foreground font-mono">{items.length}</span>
+              </div>
+              <div className="rounded-lg border divide-y bg-background">
+                {items.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-4 py-3">
+                    Nothing here yet{canEdit ? ' — add the next video idea.' : '.'}
+                  </p>
+                )}
+                {items.map((v) => (
+                  <div key={v.id} className="flex items-center gap-4 px-4 py-2.5 hover:bg-muted/40 transition-colors">
+                    {v.currentVersion > 0 ? (
+                      <Link
+                        href={`/projects/${projectId}/videos/${v.id}`}
+                        className="text-sm font-medium hover:underline truncate flex-1 min-w-0"
+                      >
+                        {v.title}
+                      </Link>
+                    ) : (
+                      <span className="text-sm font-medium truncate flex-1 min-w-0">{v.title}</span>
+                    )}
+                    {v.brief && (
+                      <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[260px]">
+                        {v.brief}
+                      </span>
+                    )}
+                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1 flex-none w-16">
                       {v.currentVersion > 0 ? (
-                        <Link
-                          href={`/projects/${projectId}/videos/${v.id}`}
-                          className="text-sm font-medium hover:underline block truncate"
-                        >
-                          {v.title}
-                        </Link>
+                        <>
+                          <Film className="h-3 w-3" />v{v.currentVersion}
+                        </>
                       ) : (
-                        <span className="text-sm font-medium block truncate">{v.title}</span>
+                        <>
+                          <Lightbulb className="h-3 w-3" />
+                          idea
+                        </>
                       )}
-                      {v.brief && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.brief}</p>
+                    </span>
+                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1 flex-none w-10">
+                      {v.commentCount > 0 && (
+                        <>
+                          <MessageSquare className="h-3 w-3" />
+                          {v.commentCount}
+                        </>
                       )}
-                      <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
-                        {v.currentVersion > 0 ? (
-                          <span className="inline-flex items-center gap-1">
-                            <Film className="h-3 w-3" />v{v.currentVersion}
-                          </span>
+                    </span>
+                    {canEdit && (
+                      <span className="flex-none">
+                        {movingId === v.id ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
                         ) : (
-                          <span className="inline-flex items-center gap-1">
-                            <Lightbulb className="h-3 w-3" />
-                            no cut yet
-                          </span>
+                          <Select value={v.status} onValueChange={(next) => moveStatus(v.id, next)}>
+                            <SelectTrigger className="h-7 w-[120px] text-xs px-2">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {PIPELINE_STAGES.map((st) => (
+                                <SelectItem key={st.key} value={st.key} className="text-xs">
+                                  {st.label}
+                                </SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
                         )}
-                        {v.commentCount > 0 && (
-                          <span className="inline-flex items-center gap-1">
-                            <MessageSquare className="h-3 w-3" />
-                            {v.commentCount}
-                          </span>
-                        )}
-                        {canEdit && (
-                          <span className="ml-auto">
-                            {movingId === v.id ? (
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            ) : (
-                              <Select
-                                value={v.status}
-                                onValueChange={(next) => moveStatus(v.id, next)}
-                              >
-                                <SelectTrigger className="h-6 w-[110px] text-xs px-2">
-                                  <SelectValue />
-                                </SelectTrigger>
-                                <SelectContent>
-                                  {PIPELINE_STAGES.map((s) => (
-                                    <SelectItem key={s.key} value={s.key} className="text-xs">
-                                      {s.label}
-                                    </SelectItem>
-                                  ))}
-                                </SelectContent>
-                              </Select>
-                            )}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
+                      </span>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           );
         })}
       </div>

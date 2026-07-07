@@ -108,8 +108,10 @@ enum VideoStatus {
   FILMED
   EDITING
   REVIEW
+  CHANGES
   APPROVED
   PUBLISHED
+  REJECTED
 }
 
 model DownloadEgressEvent {
