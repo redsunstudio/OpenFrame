@@ -29,7 +29,7 @@ import {
 } from 'lucide-react';
 
 export const metadata: Metadata = {
-  title: 'Admin Dashboard | JID',
+  title: 'Admin Dashboard | KreatorKit',
   description: 'Admin overview dashboard',
 };
 

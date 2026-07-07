@@ -201,14 +201,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
   competitorPage('frame-io-alternative', 'frame-io', {
     title: 'Frame.io Alternative for Small Teams',
     metaDescription:
-      'Compare JID vs Frame.io for freelancers and small teams. Get timestamped review, approvals, guest links, and self-hosting without per-seat enterprise pricing.',
+      'Compare KreatorKit vs Frame.io for freelancers and small teams. Get timestamped review, approvals, guest links, and self-hosting without per-seat enterprise pricing.',
     keywords: ['frame.io alternative', 'frame io alternative', 'open source frame.io alternative'],
     headline: 'Frame.io power without the enterprise bill',
     subheadline:
-      'Frame.io is the industry standard for large post teams. JID gives freelancers and small studios the review workflow they actually need: one link, one timeline, clear approvals, and optional self-hosting.',
+      'Frame.io is the industry standard for large post teams. KreatorKit gives freelancers and small studios the review workflow they actually need: one link, one timeline, clear approvals, and optional self-hosting.',
     solutionTitle: 'Built for small teams, not studio overhead',
     solutionNarrative:
-      'JID keeps the parts that save approval time—timestamped comments, voice notes, annotations, version compare, and sign-off tracking—without tying you to per-member pricing or a full creative-ops platform.',
+      'KreatorKit keeps the parts that save approval time—timestamped comments, voice notes, annotations, version compare, and sign-off tracking—without tying you to per-member pricing or a full creative-ops platform.',
     openframeWins: [...commonJIDWins, 'Fair-source codebase you can inspect and self-host'],
     competitorWins: [
       'Deep Adobe Premiere, Final Cut, and enterprise media workflows',
@@ -222,14 +222,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
           'Not for share-link review. Frame.io supports external reviewers via links without accounts, but internal project management still uses paid member seats.',
       },
       {
-        question: 'Why switch from Frame.io to JID?',
+        question: 'Why switch from Frame.io to KreatorKit?',
         answer:
-          'If you are a freelancer or small team paying for features you never touch, JID offers a simpler approval workflow, lower hosted pricing, and a free self-hosted path.',
+          'If you are a freelancer or small team paying for features you never touch, KreatorKit offers a simpler approval workflow, lower hosted pricing, and a free self-hosted path.',
       },
       {
-        question: 'Can JID replace Frame.io for enterprise MAM?',
+        question: 'Can KreatorKit replace Frame.io for enterprise MAM?',
         answer:
-          'Not today. JID is focused on review, versioning, and approvals—not large-scale media asset management or Adobe enterprise controls.',
+          'Not today. KreatorKit is focused on review, versioning, and approvals—not large-scale media asset management or Adobe enterprise controls.',
       },
     ],
     visualVariant: 'landing-compare',
@@ -245,7 +245,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     pageType: 'use-case',
     title: 'Self-Hosted Frame.io Alternative',
     metaDescription:
-      'JID is a self-hosted Frame.io alternative with timestamped review, approvals, guest links, and Docker deployment for teams that need full data control.',
+      'KreatorKit is a self-hosted Frame.io alternative with timestamped review, approvals, guest links, and Docker deployment for teams that need full data control.',
     keywords: [
       'self hosted frame.io alternative',
       'self-hosted video review',
@@ -254,7 +254,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     eyebrow: 'Self-hosted review',
     headline: 'Keep client footage on your infrastructure',
     subheadline:
-      'If Frame.io’s cloud-only model is the blocker, JID gives you the same core review loop—comments, versions, approvals, and share links—on hardware you control.',
+      'If Frame.io’s cloud-only model is the blocker, KreatorKit gives you the same core review loop—comments, versions, approvals, and share links—on hardware you control.',
     painTitle: 'Cloud review tools are not always a fit',
     painNarrative:
       'Some teams cannot upload client masters to US-hosted SaaS by policy, budget, or principle. They still need timestamped review and approvals—not a return to email chaos.',
@@ -266,7 +266,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     ],
     solutionTitle: 'Self-host without giving up the workflow',
     solutionNarrative:
-      'JID ships with Docker Compose, PostgreSQL, and S3-compatible storage. Optionally wire up your own Bunny CDN instance for streaming. Run on your server, keep projects private by default, and still send clients a simple browser review link.',
+      'KreatorKit ships with Docker Compose, PostgreSQL, and S3-compatible storage. Optionally wire up your own Bunny CDN instance for streaming. Run on your server, keep projects private by default, and still send clients a simple browser review link.',
     bestForJID: [
       'Teams with Docker ops capacity',
       'Privacy-sensitive client work',
@@ -316,17 +316,17 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     pricingFootnote: 'Self-hosting still requires your own compute, storage, and maintenance.',
     faq: [
       {
-        question: 'Is JID really self-hostable?',
+        question: 'Is KreatorKit really self-hostable?',
         answer:
           'Yes. The repository includes Docker Compose, migrations on boot, and optional S3-compatible storage. You can also use the hosted plan if you do not want to operate infrastructure.',
       },
       {
-        question: 'Can I use a CDN with self-hosted JID?',
+        question: 'Can I use a CDN with self-hosted KreatorKit?',
         answer:
           'Yes. You can integrate your own Bunny CDN instance for streaming on self-hosted deployments, keeping delivery on infrastructure you control.',
       },
       {
-        question: 'Do clients still need accounts on self-hosted JID?',
+        question: 'Do clients still need accounts on self-hosted KreatorKit?',
         answer:
           'No. Clients can review via share links in the browser without creating an account.',
       },
@@ -344,7 +344,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     pageType: 'use-case',
     title: 'Video Review Tool for Freelancers',
     metaDescription:
-      'JID is a video review tool for freelancers with timestamped comments, voice notes, guest links, version compare, and affordable hosted or free self-hosted pricing.',
+      'KreatorKit is a video review tool for freelancers with timestamped comments, voice notes, guest links, version compare, and affordable hosted or free self-hosted pricing.',
     keywords: [
       'video review tool for freelancers',
       'freelance video review',
@@ -353,7 +353,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     eyebrow: 'For freelancers',
     headline: 'Stop chasing timecodes. Start shipping cuts.',
     subheadline:
-      'You do not need enterprise creative ops to get professional client review. JID gives freelancers one link, one timeline, and a clear approval state.',
+      'You do not need enterprise creative ops to get professional client review. KreatorKit gives freelancers one link, one timeline, and a clear approval state.',
     painTitle: commonFreelancerPain.painTitle,
     painNarrative: commonFreelancerPain.painNarrative,
     painBullets: commonFreelancerPain.painBullets,
@@ -405,9 +405,9 @@ export const comparisonPages: ComparisonPageDefinition[] = [
         answer: 'Yes. Use the 7-day hosted trial or self-host for free with Docker.',
       },
       {
-        question: 'Is JID only for video?',
+        question: 'Is KreatorKit only for video?',
         answer:
-          'JID is video-first: comments, voice notes, annotations, versions, and approvals are built around the timeline.',
+          'KreatorKit is video-first: comments, voice notes, annotations, versions, and approvals are built around the timeline.',
       },
     ],
     visualVariant: 'landing-dashboard',
@@ -419,7 +419,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     pageType: 'use-case',
     title: 'Client Video Approval Tool',
     metaDescription:
-      'JID is a client video approval tool with share links, timestamped feedback, approval requests, and PDF/CSV exports for freelancers and small teams.',
+      'KreatorKit is a client video approval tool with share links, timestamped feedback, approval requests, and PDF/CSV exports for freelancers and small teams.',
     keywords: ['client video approval tool', 'video approval software', 'client sign off video'],
     eyebrow: 'Client approvals',
     headline: 'Get to “approved” without another login wall',
@@ -499,14 +499,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
   competitorPage('wipster-alternative', 'wipster', {
     title: 'Wipster Alternative for Video Review',
     metaDescription:
-      'Compare JID vs Wipster for freelancers and small teams. Get guest review links, version compare, approvals, and lower pricing with optional self-hosting.',
+      'Compare KreatorKit vs Wipster for freelancers and small teams. Get guest review links, version compare, approvals, and lower pricing with optional self-hosting.',
     keywords: ['wipster alternative', 'wipster vs openframe', 'video review alternative'],
     headline: 'Wipster-style review without agency-scale pricing',
     subheadline:
-      'Wipster is a solid video-first review tool. JID matches the core approval loop while adding voice notes, exports, and a free self-hosted path.',
+      'Wipster is a solid video-first review tool. KreatorKit matches the core approval loop while adding voice notes, exports, and a free self-hosted path.',
     solutionTitle: 'Same review outcome, simpler economics',
     solutionNarrative:
-      'If you mainly need clients to comment on timecodes, compare versions, and approve a cut, JID covers that workflow at a lower monthly cost.',
+      'If you mainly need clients to comment on timecodes, compare versions, and approve a cut, KreatorKit covers that workflow at a lower monthly cost.',
     openframeWins: [...commonJIDWins, 'Lower hosted entry price for solo operators'],
     competitorWins: [
       'Mature NLE review panels for Premiere and After Effects',
@@ -517,7 +517,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
       {
         question: 'Does Wipster charge for reviewers?',
         answer:
-          'No. Wipster includes unlimited reviewers. JID also supports guest review links without client seats.',
+          'No. Wipster includes unlimited reviewers. KreatorKit also supports guest review links without client seats.',
       },
       {
         question: 'When is Wipster still the better fit?',
@@ -525,7 +525,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
           'If you rely heavily on Wipster’s NLE panels and agency workflows already in production.',
       },
       {
-        question: 'Does JID support version compare?',
+        question: 'Does KreatorKit support version compare?',
         answer: 'Yes. You can compare two versions side by side on one timeline.',
       },
     ],
@@ -538,14 +538,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
   competitorPage('dropbox-replay-alternative', 'dropbox-replay', {
     title: 'Dropbox Replay Alternative',
     metaDescription:
-      'Compare JID vs Dropbox Replay for video review. Get a dedicated approval workflow, guest links, and optional self-hosting without Dropbox plan lock-in.',
+      'Compare KreatorKit vs Dropbox Replay for video review. Get a dedicated approval workflow, guest links, and optional self-hosting without Dropbox plan lock-in.',
     keywords: ['dropbox replay alternative', 'dropbox replay vs', 'video review without dropbox'],
     headline: 'Video review without Dropbox lock-in',
     subheadline:
-      'Dropbox Replay is convenient if your files already live in Dropbox. JID is a focused review platform that does not require a storage suite to function.',
+      'Dropbox Replay is convenient if your files already live in Dropbox. KreatorKit is a focused review platform that does not require a storage suite to function.',
     solutionTitle: 'A review tool, not a storage add-on',
     solutionNarrative:
-      'JID is built around review, versions, and approvals first—so you are not paying for a file-sync platform just to collect timestamped client notes.',
+      'KreatorKit is built around review, versions, and approvals first—so you are not paying for a file-sync platform just to collect timestamped client notes.',
     openframeWins: [
       ...commonJIDWins,
       'No Dropbox plan or Replay Add-On required',
@@ -563,14 +563,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
           'Replay is included with limits on most plans. Full usage typically requires a paid Dropbox plan and often the Replay Add-On.',
       },
       {
-        question: 'Can JID replace Replay for NLE markers?',
+        question: 'Can KreatorKit replace Replay for NLE markers?',
         answer:
-          'JID focuses on browser review, approvals, and exports rather than in-editor marker sync.',
+          'KreatorKit focuses on browser review, approvals, and exports rather than in-editor marker sync.',
       },
       {
         question: 'Do clients need Dropbox accounts?',
         answer:
-          'Not necessarily for all Replay flows, but the product assumes Dropbox storage context. JID uses standalone share links.',
+          'Not necessarily for all Replay flows, but the product assumes Dropbox storage context. KreatorKit uses standalone share links.',
       },
     ],
     relatedSlugs: [
@@ -582,14 +582,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
   competitorPage('vimeo-review-alternative', 'vimeo-review', {
     title: 'Vimeo Review Alternative',
     metaDescription:
-      'Compare JID vs Vimeo Review. Get dedicated approvals, voice notes, exports, and self-hosting without tying review to Vimeo hosting plans.',
+      'Compare KreatorKit vs Vimeo Review. Get dedicated approvals, voice notes, exports, and self-hosting without tying review to Vimeo hosting plans.',
     keywords: ['vimeo review alternative', 'vimeo video review alternative'],
     headline: 'Review workflow without Vimeo plan lock-in',
     subheadline:
-      'Vimeo Review is convenient when you already host on Vimeo. JID is a standalone review platform with its own hosted and self-hosted options.',
+      'Vimeo Review is convenient when you already host on Vimeo. KreatorKit is a standalone review platform with its own hosted and self-hosted options.',
     solutionTitle: 'Decouple review from distribution',
     solutionNarrative:
-      'You should not need a video hosting subscription to run a professional approval loop. JID works whether your master lives on YouTube, direct upload, or self-hosted storage.',
+      'You should not need a video hosting subscription to run a professional approval loop. KreatorKit works whether your master lives on YouTube, direct upload, or self-hosted storage.',
     openframeWins: [
       ...commonJIDWins,
       'Standalone product—not a hosting bundle',
@@ -606,8 +606,8 @@ export const comparisonPages: ComparisonPageDefinition[] = [
         answer: 'No for review links. Guests can comment after providing name and email.',
       },
       {
-        question: 'Can JID import YouTube videos?',
-        answer: 'Yes. Hosted JID supports unlimited YouTube URL imports.',
+        question: 'Can KreatorKit import YouTube videos?',
+        answer: 'Yes. Hosted KreatorKit supports unlimited YouTube URL imports.',
       },
       {
         question: 'When is Vimeo Review enough?',
@@ -624,14 +624,14 @@ export const comparisonPages: ComparisonPageDefinition[] = [
   competitorPage('flask-alternative', 'flask', {
     title: 'Flask Alternative for Video Feedback',
     metaDescription:
-      'Compare JID vs Flask for video feedback. Get structured approvals, guest review links, exports, and self-hosting alongside spoken-note workflows.',
+      'Compare KreatorKit vs Flask for video feedback. Get structured approvals, guest review links, exports, and self-hosting alongside spoken-note workflows.',
     keywords: ['flask.do alternative', 'flask video feedback alternative'],
     headline: 'Structured approvals beyond spoken feedback',
     subheadline:
-      'Flask is compelling for voice-first review. JID is for teams that also need formal approvals, exports, guest links, and optional self-hosting.',
+      'Flask is compelling for voice-first review. KreatorKit is for teams that also need formal approvals, exports, guest links, and optional self-hosting.',
     solutionTitle: 'Capture feedback and close the approval loop',
     solutionNarrative:
-      'JID supports voice notes too—but it also tracks approval status per reviewer, compares versions, and exports a handoff record when the cut is cleared.',
+      'KreatorKit supports voice notes too—but it also tracks approval status per reviewer, compares versions, and exports a handoff record when the cut is cleared.',
     openframeWins: [
       ...commonJIDWins,
       'Formal approval requests and status tracking',
@@ -668,7 +668,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
     ],
     faq: [
       {
-        question: 'Does JID support voice notes?',
+        question: 'Does KreatorKit support voice notes?',
         answer: 'Yes. Reviewers can leave voice notes anchored to timestamps on the timeline.',
       },
       {
@@ -682,7 +682,7 @@ export const comparisonPages: ComparisonPageDefinition[] = [
           'When your reviewers primarily talk through notes and you want AI-structured feedback capture.',
       },
       {
-        question: 'Can clients approve without an account in JID?',
+        question: 'Can clients approve without an account in KreatorKit?',
         answer: 'Yes. Share links support guest review and approval flows.',
       },
     ],

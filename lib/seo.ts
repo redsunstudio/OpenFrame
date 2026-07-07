@@ -25,10 +25,10 @@ export function getSiteUrl(): string {
 }
 
 export const seoConfig = {
-  name: 'JID',
+  name: 'KreatorKit',
   title: 'Client Review Platform',
   description:
-    'JID is an open source video review platform for collecting timestamped feedback with text and voice comments.',
+    'KreatorKit — the JID client platform: review your cuts with timestamped feedback, hand off footage, and see everything we run for you in one place.',
   keywords: [
     'open source video review platform',
     'video review tool',
@@ -41,5 +41,5 @@ export const seoConfig = {
   ogImage: '/meta.webp',
   logoPath: '/icon.svg',
   logo: '/icon.svg?v=2',
-  githubUrl: 'https://github.com/yusufipk/JID',
+  githubUrl: 'https://github.com/yusufipk/KreatorKit',
 } as const;

@@ -73,7 +73,7 @@ interface VideoPageContentProps {
   projectId?: string;
   directUploadsEnabled?: boolean;
   directUploadProvider?: import('@/components/video-page/types').DirectUploadProvider;
-  /** Chrome-less mode for embedding inside the JID client dashboards. */
+  /** Chrome-less mode for embedding inside the KreatorKit client dashboards. */
   embed?: boolean;
   /** Hex accent override (e.g. 2ea8e0) used in embed mode to match client brand. */
   accent?: string;

@@ -461,7 +461,7 @@ export const competitorProfiles: Record<string, CompetitorProfile> = {
     ],
     limitations: [
       'Production deployment requires DevOps effort',
-      'Different stack (FastAPI + Next.js) from JID',
+      'Different stack (FastAPI + Next.js) from KreatorKit',
       'Younger project with smaller community',
     ],
     pricingSummary: 'Free (self-hosted, open source)',
@@ -550,7 +550,7 @@ export const competitorProfiles: Record<string, CompetitorProfile> = {
 };
 
 export const openFrameProfile = {
-  name: 'JID',
+  name: 'KreatorKit',
   tagline: 'Fair-source video review and approval with hosted and self-hosted options.',
   pricingSummary: 'Self-hosted free · Hosted $10/mo after 7-day trial',
   trial: '7-day free trial on hosted plan',

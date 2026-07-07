@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       const settingsUrl = `${process.env.NEXTAUTH_URL || ''}/settings`;
       const telegramPayload: Record<string, unknown> = {
         chat_id: telegramChatId,
-        text: '✅ JID notifications connected successfully!\n\nYou will receive notifications here when activity happens on your projects.',
+        text: '✅ KreatorKit notifications connected successfully!\n\nYou will receive notifications here when activity happens on your projects.',
         link_preview_options: { is_disabled: true },
       };
       // Telegram inline keyboard buttons require HTTPS URLs
@@ -193,13 +193,13 @@ export async function POST(request: NextRequest) {
       const fromAddress =
         process.env.SMTP_FROM ||
         process.env.EMAIL_FROM ||
-        'JID <noreply@apps.johnisaacson.co.uk>';
+        'KreatorKit <noreply@apps.johnisaacson.co.uk>';
 
       try {
         await transporter.sendMail({
           from: fromAddress,
           to: user.email,
-          subject: '[JID] Test notification',
+          subject: '[KreatorKit] Test notification',
           html: testEmailHtml(),
         });
       } catch (emailErr) {

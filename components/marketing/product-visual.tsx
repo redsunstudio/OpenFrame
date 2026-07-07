@@ -12,7 +12,7 @@ export function ProductVisual({ variant }: ProductVisualProps) {
       <div className="relative aspect-[16/10] overflow-hidden border border-border bg-card">
         <Image
           src="/landing/compare-v2.webp"
-          alt="JID side-by-side version compare"
+          alt="KreatorKit side-by-side version compare"
           fill
           className="object-cover object-top"
           sizes="(max-width: 768px) 100vw, 540px"
@@ -27,7 +27,7 @@ export function ProductVisual({ variant }: ProductVisualProps) {
       <div className="relative aspect-[16/10] overflow-hidden border border-border bg-card">
         <Image
           src="/landing/deep-dive-dashboard-2.webp"
-          alt="JID video review dashboard"
+          alt="KreatorKit video review dashboard"
           fill
           className="object-cover object-top"
           sizes="(max-width: 768px) 100vw, 540px"

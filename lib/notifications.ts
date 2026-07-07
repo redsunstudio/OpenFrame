@@ -84,7 +84,7 @@ function createSmtpTransport() {
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
   const transporter = createSmtpTransport();
   const fromAddress =
-    process.env.SMTP_FROM || process.env.EMAIL_FROM || 'JID <noreply@apps.johnisaacson.co.uk>';
+    process.env.SMTP_FROM || process.env.EMAIL_FROM || 'KreatorKit <noreply@apps.johnisaacson.co.uk>';
 
   if (!transporter) {
     console.warn('SMTP not configured — skipping email notification');
@@ -309,7 +309,7 @@ function formatEmail(
   switch (event.type) {
     case 'new_video':
       return {
-        subject: `[JID] New video in ${event.projectName}: ${event.videoTitle}`,
+        subject: `[KreatorKit] New video in ${event.projectName}: ${event.videoTitle}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#9654;', 'New Video Added')}</tr>
                     <tr><td style="padding:20px;">
@@ -325,7 +325,7 @@ function formatEmail(
       };
     case 'new_version':
       return {
-        subject: `[JID] New version of ${event.videoTitle} in ${event.projectName}`,
+        subject: `[KreatorKit] New version of ${event.videoTitle} in ${event.projectName}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#9654;', 'New Version Added')}</tr>
                     <tr><td style="padding:20px;">
@@ -342,7 +342,7 @@ function formatEmail(
       };
     case 'new_comment':
       return {
-        subject: `[JID] New comment on ${event.videoTitle}`,
+        subject: `[KreatorKit] New comment on ${event.videoTitle}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#9679;', 'New Comment')}</tr>
                     <tr><td style="padding:20px;">
@@ -362,7 +362,7 @@ function formatEmail(
       };
     case 'new_reply':
       return {
-        subject: `[JID] ${event.replyAuthor} replied on ${event.videoTitle}`,
+        subject: `[KreatorKit] ${event.replyAuthor} replied on ${event.videoTitle}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#8617;', 'New Reply')}</tr>
                     <tr><td style="padding:20px;">
@@ -381,7 +381,7 @@ function formatEmail(
       };
     case 'approval_requested':
       return {
-        subject: `[JID] Approval requested for ${event.versionLabel} in ${event.projectName}`,
+        subject: `[KreatorKit] Approval requested for ${event.versionLabel} in ${event.projectName}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#10003;', 'Approval Requested')}</tr>
                     <tr><td style="padding:20px;">
@@ -400,7 +400,7 @@ function formatEmail(
       };
     case 'approval_action':
       return {
-        subject: `[JID] Approval ${event.action} by ${event.actorName}`,
+        subject: `[KreatorKit] Approval ${event.action} by ${event.actorName}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#10003;', 'Approval Update')}</tr>
                     <tr><td style="padding:20px;">
@@ -419,7 +419,7 @@ function formatEmail(
       };
     case 'approval_completed':
       return {
-        subject: `[JID] Approval completed for ${event.versionLabel}`,
+        subject: `[KreatorKit] Approval completed for ${event.versionLabel}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#10003;', 'Approval Completed')}</tr>
                     <tr><td style="padding:20px;">
@@ -437,7 +437,7 @@ function formatEmail(
       };
     case 'approval_rejected':
       return {
-        subject: `[JID] Approval rejected by ${event.rejectedBy}`,
+        subject: `[KreatorKit] Approval rejected by ${event.rejectedBy}`,
         html: emailTemplate(`
                     <tr>${emailHeading('&#9940;', 'Approval Rejected')}</tr>
                     <tr><td style="padding:20px;">

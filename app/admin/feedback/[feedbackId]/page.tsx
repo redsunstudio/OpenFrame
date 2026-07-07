@@ -111,7 +111,7 @@ export default async function AdminFeedbackDetailPage({
     .join('\n');
   const mailtoHref = entry.user.email
     ? `mailto:${entry.user.email}?subject=${encodeURIComponent(
-        `[JID ${entry.type}] Re: ${entry.title}`
+        `[KreatorKit ${entry.type}] Re: ${entry.title}`
       )}&body=${encodeURIComponent(
         `Hi ${submitterName},\n\nThanks for your ${feedbackTypeLabel}.\n\n` +
           `I reviewed your submission:\n` +

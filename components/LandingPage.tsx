@@ -179,7 +179,7 @@ export function LandingPage({ isLoggedIn }: LandingPageProps) {
             </Link>
             <a
               className="text-muted-foreground transition-colors hover:text-foreground"
-              href="https://github.com/yusufipk/JID"
+              href="https://github.com/yusufipk/KreatorKit"
               target="_blank"
               rel="noreferrer"
             >
@@ -249,7 +249,7 @@ export function LandingPage({ isLoggedIn }: LandingPageProps) {
               data-hero-copy
               className="mx-auto max-w-2xl text-base text-muted-foreground md:text-xl"
             >
-              JID puts comments, voice notes, and annotations on a single timeline so clients
+              KreatorKit puts comments, voice notes, and annotations on a single timeline so clients
               say &quot;yes&quot; faster and your team stops guessing.
             </p>
 
@@ -329,7 +329,7 @@ export function LandingPage({ isLoggedIn }: LandingPageProps) {
               </ul>
               <div className="mt-10 border-l-2 border-primary/50 pl-4">
                 <p className="text-base text-foreground md:text-lg">
-                  JID replaces all of that with one link, one timeline, one source of truth.
+                  KreatorKit replaces all of that with one link, one timeline, one source of truth.
                 </p>
               </div>
             </div>
@@ -604,7 +604,7 @@ export function LandingPage({ isLoggedIn }: LandingPageProps) {
                 Clients don&apos;t need an account. They just review.
               </h2>
               <p className="text-lg text-muted-foreground">
-                If clients can&apos;t adopt the tool, approvals don&apos;t happen. JID keeps
+                If clients can&apos;t adopt the tool, approvals don&apos;t happen. KreatorKit keeps
                 it frictionless.
               </p>
             </div>
@@ -683,7 +683,7 @@ export function LandingPage({ isLoggedIn }: LandingPageProps) {
                 </ul>
 
                 <a
-                  href="https://github.com/yusufipk/JID"
+                  href="https://github.com/yusufipk/KreatorKit"
                   target="_blank"
                   rel="noreferrer"
                   className="mt-auto group relative isolate inline-flex h-12 w-full items-center justify-center overflow-hidden border border-border/50 bg-[#0a0a0a] font-medium text-foreground transition-colors hover:bg-white/5 text-sm"
@@ -901,7 +901,7 @@ export function LandingPage({ isLoggedIn }: LandingPageProps) {
                 info@open-frame.net
               </a>
               <a
-                href="https://github.com/yusufipk/JID"
+                href="https://github.com/yusufipk/KreatorKit"
                 className="text-xs text-muted-foreground hover:text-foreground"
               >
                 GitHub
