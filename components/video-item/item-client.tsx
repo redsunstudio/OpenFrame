@@ -27,7 +27,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
-import { PIPELINE_STAGES } from '@/components/pipeline-board';
+import { PIPELINE_STAGES, stageOf } from '@/components/pipeline-board';
 
 interface ItemVersion {
   id: string;
@@ -263,11 +263,11 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
       }
     }
     await loadAssets();
-    if (anySuccess && status === 'IDEA') {
+    if (anySuccess && stageOf(status) === 'IDEA') {
       try {
-        await patchItem({ status: 'FILMED' });
-        setStatus('FILMED');
-        toast.success('Footage received — status moved to Filmed');
+        await patchItem({ status: 'EDITING' });
+        setStatus('EDITING');
+        toast.success('Footage received — moved to In edit');
       } catch {
         /* non-fatal */
       }
@@ -330,7 +330,7 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
       });
       if (!fin.ok) throw new Error((await fin.json())?.error?.message || 'could not create the version');
       toast.success('New cut uploaded — moved to review');
-      setStatus((s) => (['IDEA', 'FILMED', 'EDITING'].includes(s) ? 'REVIEW' : s));
+      setStatus((s) => (['IDEA', 'FILMED', 'EDITING'].includes(stageOf(s)) || ['IDEA', 'EDITING'].includes(stageOf(s)) ? 'REVIEW' : s));
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'Cut upload failed');
@@ -348,7 +348,7 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
         <h1 className="text-2xl font-bold tracking-tight">{video.title}</h1>
         <div className="flex items-center gap-2">
           {movingStatus && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
-          <Select value={status} onValueChange={changeStatus} disabled={!canEdit}>
+          <Select value={stageOf(status)} onValueChange={changeStatus} disabled={!canEdit}>
             <SelectTrigger className="w-[150px]">
               <SelectValue />
             </SelectTrigger>

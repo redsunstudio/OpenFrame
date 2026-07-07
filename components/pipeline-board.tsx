@@ -34,23 +34,25 @@ import { cn } from '@/lib/utils';
 
 export const PIPELINE_STAGES = [
   { key: 'IDEA', label: 'Idea' },
-  { key: 'FILMED', label: 'Filmed' },
   { key: 'EDITING', label: 'In edit' },
   { key: 'REVIEW', label: 'In review' },
-  { key: 'CHANGES', label: 'Changes' },
   { key: 'APPROVED', label: 'Approved' },
   { key: 'PUBLISHED', label: 'Published' },
   { key: 'REJECTED', label: 'Rejected' },
 ] as const;
 
+// Retired stages still present on old rows map into the nearest live stage.
+const LEGACY_STAGE_MAP: Record<string, StageKey> = {
+  FILMED: 'EDITING',
+  CHANGES: 'REVIEW',
+};
+
 type StageKey = (typeof PIPELINE_STAGES)[number]['key'];
 
 const STAGE_CHIP: Record<StageKey, string> = {
   IDEA: 'bg-white/5 text-muted-foreground border-white/10',
-  FILMED: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
   EDITING: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
-  REVIEW: 'bg-primary/10 text-primary border-primary/30',
-  CHANGES: 'bg-blue-400/10 text-blue-300 border-blue-400/30',
+  REVIEW: 'bg-blue-400/10 text-blue-300 border-blue-400/30',
   APPROVED: 'bg-green-500/10 text-green-400 border-green-500/30',
   PUBLISHED: 'bg-green-700/15 text-green-500 border-green-700/40',
   REJECTED: 'bg-red-500/10 text-red-400 border-red-500/30',
@@ -58,16 +60,15 @@ const STAGE_CHIP: Record<StageKey, string> = {
 
 const STAGE_DOT: Record<StageKey, string> = {
   IDEA: 'bg-muted-foreground',
-  FILMED: 'bg-amber-500',
   EDITING: 'bg-orange-500',
-  REVIEW: 'bg-primary',
-  CHANGES: 'bg-blue-400',
+  REVIEW: 'bg-blue-400',
   APPROVED: 'bg-green-500',
   PUBLISHED: 'bg-green-700',
   REJECTED: 'bg-red-500',
 };
 
-function stageOf(status: string): StageKey {
+export function stageOf(status: string): StageKey {
+  if (LEGACY_STAGE_MAP[status]) return LEGACY_STAGE_MAP[status];
   return (PIPELINE_STAGES.find((s) => s.key === status)?.key ?? 'IDEA') as StageKey;
 }
 

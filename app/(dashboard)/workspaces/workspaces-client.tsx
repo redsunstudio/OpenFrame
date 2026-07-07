@@ -29,6 +29,9 @@ interface SerializedWorkspace {
     projects: number;
     members: number;
   };
+  brandAccent?: string | null;
+  coverUrl?: string | null;
+  videoCount?: number;
 }
 
 interface WorkspacesClientProps {
@@ -80,34 +83,61 @@ export function WorkspacesClient({
       {workspaces.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {workspaces.map((workspace) => (
-            <Link key={workspace.id} href={`/workspaces/${workspace.id}`}>
-              <Card className="h-full transition-colors hover:bg-accent/50 cursor-pointer">
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Building2 className="h-5 w-5 text-primary" />
-                    {workspace.name}
-                  </CardTitle>
-                  <CardDescription className="line-clamp-2">
-                    {workspace.description || 'No description'}
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3.5 w-3.5" />
-                      {formatRelativeTime(new Date(workspace.updatedAt))}
+            <Link key={workspace.id} href={`/workspaces/${workspace.id}`} className="group">
+              <div className="h-full rounded-2xl border bg-card overflow-hidden transition-all duration-150 group-hover:border-primary/50 group-hover:-translate-y-0.5">
+                <div
+                  className="aspect-[16/9] w-full flex items-center justify-center"
+                  style={
+                    workspace.coverUrl
+                      ? undefined
+                      : {
+                          background: `linear-gradient(135deg, ${workspace.brandAccent || '#21262d'}22 0%, #161b22 70%)`,
+                        }
+                  }
+                >
+                  {workspace.coverUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={workspace.coverUrl}
+                      alt=""
+                      className="w-full h-full object-cover"
+                    />
+                  ) : (
+                    <span
+                      className="text-4xl font-bold opacity-70"
+                      style={{ color: workspace.brandAccent || '#7d8590' }}
+                    >
+                      {workspace.name.slice(0, 1).toUpperCase()}
                     </span>
+                  )}
+                </div>
+                <div className="p-4">
+                  <h3 className="font-semibold flex items-center gap-2">
+                    <span
+                      className="h-2 w-2 rounded-full flex-none"
+                      style={{ background: workspace.brandAccent || '#7d8590' }}
+                    />
+                    {workspace.name}
+                  </h3>
+                  <p className="text-sm text-muted-foreground line-clamp-2 mt-1 min-h-[1.25rem]">
+                    {workspace.description || ''}
+                  </p>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground mt-3 font-mono">
                     <span className="flex items-center gap-1">
                       <FolderOpen className="h-3.5 w-3.5" />
-                      {workspace._count.projects} projects
+                      {workspace.videoCount ?? 0} videos
                     </span>
                     <span className="flex items-center gap-1">
                       <Users className="h-3.5 w-3.5" />
                       {workspace._count.members + 1}
                     </span>
+                    <span className="flex items-center gap-1 ml-auto">
+                      <Clock className="h-3.5 w-3.5" />
+                      {formatRelativeTime(new Date(workspace.updatedAt))}
+                    </span>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             </Link>
           ))}
         </div>
