@@ -18,6 +18,7 @@ import { auth, checkWorkspaceAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
+import { ModuleNav } from '@/components/workspace/module-nav';
 
 function VisibilityIcon({ visibility }: { visibility: string }) {
   switch (visibility) {
@@ -106,7 +107,10 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
   const totalPages = Math.ceil(workspace._count.projects / pageSize);
 
   return (
-    <div className="px-6 lg:px-8 py-8 w-full">
+    <div
+      className="px-6 lg:px-8 py-8 w-full"
+      style={workspace.brandAccent ? ({ '--primary': workspace.brandAccent } as React.CSSProperties) : undefined}
+    >
       <VideoDragDropUploader
         workspaceId={workspaceId}
         canUpload={isAdmin && workspace._count.projects > 0 && isDirectFileUploadEnabled()}
@@ -165,6 +169,8 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           )}
         </div>
       </div>
+
+      <ModuleNav workspace={workspace} active="review" />
 
       {/* Projects Grid */}
       {workspace.projects.length > 0 ? (
