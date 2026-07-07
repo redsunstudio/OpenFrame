@@ -1,0 +1,350 @@
+'use client';
+
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import {
+  Film,
+  Inbox,
+  Loader2,
+  Play,
+  Save,
+  Upload,
+  User as UserIcon,
+} from 'lucide-react';
+import { toast } from 'sonner';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { PIPELINE_STAGES } from '@/components/pipeline-board';
+
+interface ItemVersion {
+  id: string;
+  versionNumber: number;
+  versionLabel: string | null;
+  isActive: boolean;
+}
+
+interface ItemVideo {
+  id: string;
+  projectId: string;
+  title: string;
+  status: string;
+  brief: string | null;
+  versions: ItemVersion[];
+}
+
+interface Asset {
+  id: string;
+  displayName: string;
+  kind: string;
+  sizeBytes?: string | number | null;
+  uploadedByUser?: { name: string | null } | null;
+  uploadedByGuestName?: string | null;
+  createdAt: string;
+}
+
+interface VideoItemClientProps {
+  workspaceId: string;
+  video: ItemVideo;
+  canEdit: boolean;
+}
+
+function fmtSize(b?: string | number | null): string {
+  const n = typeof b === 'string' ? Number(b) : (b ?? 0);
+  if (!n) return '';
+  return n > 1e9 ? `${(n / 1e9).toFixed(2)} GB` : `${(n / 1e6).toFixed(1)} MB`;
+}
+
+export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClientProps) {
+  const router = useRouter();
+  const [status, setStatus] = useState(video.status);
+  const [brief, setBrief] = useState(video.brief ?? '');
+  const [savingBrief, setSavingBrief] = useState(false);
+  const [movingStatus, setMovingStatus] = useState(false);
+  const [assets, setAssets] = useState<Asset[]>([]);
+  const [assetsLoaded, setAssetsLoaded] = useState(false);
+  const [uploads, setUploads] = useState<{ name: string; pct: number; state: string }[]>([]);
+  const fileInput = useRef<HTMLInputElement>(null);
+
+  const loadAssets = useCallback(async () => {
+    try {
+      const r = await fetch(`/api/videos/${video.id}/assets`);
+      if (r.ok) {
+        const d = await r.json();
+        setAssets(d.data?.assets ?? []);
+      }
+    } finally {
+      setAssetsLoaded(true);
+    }
+  }, [video.id]);
+
+  useEffect(() => {
+    void loadAssets();
+  }, [loadAssets]);
+
+  async function patchItem(payload: Record<string, unknown>) {
+    const r = await fetch(`/api/projects/${video.projectId}/videos/${video.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!r.ok) throw new Error('Save failed');
+    return r.json();
+  }
+
+  async function changeStatus(next: string) {
+    setMovingStatus(true);
+    const prev = status;
+    setStatus(next);
+    try {
+      await patchItem({ status: next });
+      router.refresh();
+    } catch {
+      setStatus(prev);
+      toast.error('Could not change status');
+    } finally {
+      setMovingStatus(false);
+    }
+  }
+
+  async function saveBrief() {
+    setSavingBrief(true);
+    try {
+      await patchItem({ brief: brief.trim() || null });
+      toast.success('Brief saved');
+    } catch {
+      toast.error('Could not save the brief');
+    } finally {
+      setSavingBrief(false);
+    }
+  }
+
+  async function uploadFootage(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    for (const file of Array.from(files)) {
+      const entry = { name: file.name, pct: 0, state: 'uploading' };
+      setUploads((u) => [...u, entry]);
+      const update = (patch: Partial<typeof entry>) =>
+        setUploads((u) => u.map((x) => (x.name === file.name ? { ...x, ...patch } : x)));
+      try {
+        const initRes = await fetch(`/api/videos/${video.id}/assets/r2-init`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            fileName: file.name,
+            contentType: file.type,
+            sizeBytes: file.size,
+          }),
+        });
+        if (!initRes.ok)
+          throw new Error(
+            (await initRes.json())?.error?.message || 'Only video files can be dropped here for now'
+          );
+        const init = (await initRes.json()).data;
+
+        await new Promise<void>((resolve, reject) => {
+          const xhr = new XMLHttpRequest();
+          xhr.open('PUT', init.presignedPutUrl);
+          xhr.setRequestHeader('Content-Type', init.contentType || file.type);
+          xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) update({ pct: Math.round((e.loaded / e.total) * 100) });
+          };
+          xhr.onload = () =>
+            xhr.status >= 200 && xhr.status < 300
+              ? resolve()
+              : reject(new Error('storage rejected the file'));
+          xhr.onerror = () => reject(new Error('network error'));
+          xhr.send(file);
+        });
+
+        const fin = await fetch(`/api/videos/${video.id}/assets`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            provider: 'R2_VIDEO',
+            sourceUrl: init.proxyUrl,
+            objectKey: init.objectKey,
+            uploadToken: init.uploadToken,
+            displayName: file.name,
+          }),
+        });
+        if (!fin.ok) throw new Error('could not finish the upload');
+        update({ pct: 100, state: 'done' });
+      } catch (e) {
+        update({ state: 'error' });
+        toast.error(`${file.name}: ${e instanceof Error ? e.message : 'upload failed'}`);
+      }
+    }
+    await loadAssets();
+    // Footage arriving moves an idea into FILMED automatically.
+    if (status === 'IDEA') {
+      try {
+        await patchItem({ status: 'FILMED' });
+        setStatus('FILMED');
+        toast.success('Footage received — status moved to Filmed');
+      } catch {
+        /* non-fatal */
+      }
+    }
+    setTimeout(() => setUploads([]), 2500);
+  }
+
+  const activeVersion = video.versions.find((v) => v.isActive) ?? video.versions[0];
+
+  return (
+    <div className="space-y-6">
+      {/* Title + status */}
+      <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+        <h1 className="text-2xl font-bold tracking-tight">{video.title}</h1>
+        <div className="flex items-center gap-2">
+          {movingStatus && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
+          <Select value={status} onValueChange={changeStatus} disabled={!canEdit}>
+            <SelectTrigger className="w-[150px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {PIPELINE_STAGES.map((s) => (
+                <SelectItem key={s.key} value={s.key}>
+                  {s.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      {/* Watch / review */}
+      {video.versions.length > 0 && (
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Play className="h-4 w-4" />
+              Cuts
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {video.versions.map((v) => (
+              <div key={v.id} className="flex items-center gap-3 text-sm">
+                <Film className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-medium">
+                  v{v.versionNumber}
+                  {v.versionLabel ? ` — ${v.versionLabel}` : ''}
+                </span>
+                {v.id === activeVersion?.id && (
+                  <span className="text-xs text-muted-foreground">current</span>
+                )}
+                <Button asChild size="sm" variant="outline" className="ml-auto h-7">
+                  <Link href={`/projects/${video.projectId}/videos/${video.id}`}>
+                    Watch & review
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Brief */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base">Brief</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Textarea
+            value={brief}
+            onChange={(e) => setBrief(e.target.value)}
+            placeholder="The angle, the hook, references — anything the shoot or the edit needs to know."
+            rows={4}
+            maxLength={5000}
+            disabled={!canEdit}
+          />
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={saveBrief} disabled={savingBrief}>
+              {savingBrief ? (
+                <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+              ) : (
+                <Save className="h-4 w-4 mr-1.5" />
+              )}
+              Save brief
+            </Button>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Footage handoff */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Inbox className="h-4 w-4" />
+            Footage handoff
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {canEdit && (
+            <>
+              <input
+                ref={fileInput}
+                type="file"
+                accept="video/*"
+                multiple
+                className="hidden"
+                onChange={(e) => {
+                  void uploadFootage(e.target.files);
+                  e.target.value = '';
+                }}
+              />
+              <Button size="sm" onClick={() => fileInput.current?.click()}>
+                <Upload className="h-4 w-4 mr-1.5" />
+                Drop footage
+              </Button>
+            </>
+          )}
+          {uploads.map((u) => (
+            <div key={u.name} className="text-xs text-muted-foreground flex items-center gap-2">
+              {u.state === 'uploading' ? (
+                <Loader2 className="h-3 w-3 animate-spin" />
+              ) : u.state === 'done' ? (
+                '✓'
+              ) : (
+                '✕'
+              )}
+              <span className="truncate">{u.name}</span>
+              {u.state === 'uploading' && <span>{u.pct}%</span>}
+            </div>
+          ))}
+          {!assetsLoaded ? (
+            <p className="text-xs text-muted-foreground">Loading assets…</p>
+          ) : assets.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              No source files yet — everything dropped here is stored on this video.
+            </p>
+          ) : (
+            <div className="rounded-lg border divide-y">
+              {assets.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 px-3 py-2 text-sm">
+                  <Film className="h-3.5 w-3.5 text-muted-foreground flex-none" />
+                  <span className="truncate flex-1 font-medium">{a.displayName}</span>
+                  <span className="text-xs text-muted-foreground flex-none">
+                    {fmtSize(a.sizeBytes)}
+                  </span>
+                  <span className="text-xs text-muted-foreground flex-none inline-flex items-center gap-1">
+                    <UserIcon className="h-3 w-3" />
+                    {a.uploadedByUser?.name || a.uploadedByGuestName || '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

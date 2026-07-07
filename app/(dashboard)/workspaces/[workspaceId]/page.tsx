@@ -19,6 +19,7 @@ import { db } from '@/lib/db';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 import { ModuleNav } from '@/components/workspace/module-nav';
+import { PipelineBoard } from '@/components/pipeline-board';
 
 function VisibilityIcon({ visibility }: { visibility: string }) {
   switch (visibility) {
@@ -106,6 +107,31 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
 
   const totalPages = Math.ceil(workspace._count.projects / pageSize);
 
+  // KreatorKit flattened view: every video item across the workspace's (hidden) projects
+  const workspaceVideos = await db.video.findMany({
+    where: { project: { workspaceId } },
+    orderBy: { updatedAt: 'desc' },
+    take: 300,
+    include: {
+      versions: {
+        where: { isActive: true },
+        orderBy: { versionNumber: 'desc' },
+        take: 1,
+        select: { id: true, _count: { select: { comments: true } } },
+      },
+      _count: { select: { versions: true } },
+    },
+  });
+  const pipelineItems = workspaceVideos.map((v) => ({
+    id: v.id,
+    title: v.title,
+    status: v.status,
+    brief: v.brief,
+    currentVersion: v._count.versions,
+    commentCount: v.versions[0]?._count.comments ?? 0,
+    projectId: v.projectId,
+  }));
+
   return (
     <div
       className="px-6 lg:px-8 py-8 w-full"
@@ -136,7 +162,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <FolderOpen className="h-3.5 w-3.5" />
-              {workspace._count.projects} projects
+              {pipelineItems.length} videos
             </span>
             <span className="flex items-center gap-1">
               <Users className="h-3.5 w-3.5" />
@@ -159,12 +185,6 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
                   Settings
                 </Link>
               </Button>
-              <Button asChild size="sm" className="w-full sm:w-auto">
-                <Link href={`/workspaces/${workspaceId}/projects/new`}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  New Project
-                </Link>
-              </Button>
             </>
           )}
         </div>
@@ -172,91 +192,8 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
 
       <ModuleNav workspace={workspace} active="review" />
 
-      {/* Projects Grid */}
-      {workspace.projects.length > 0 ? (
-        <>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-            {workspace.projects.map((project: (typeof workspace.projects)[number]) => (
-              <Link key={project.id} href={`/projects/${project.id}`}>
-                <Card className="h-full transition-colors hover:bg-accent/50 cursor-pointer">
-                  <CardHeader>
-                    <div className="flex items-start justify-between">
-                      <CardTitle className="flex items-center gap-2">
-                        <FolderOpen className="h-5 w-5 text-primary" />
-                        {project.name}
-                      </CardTitle>
-                      <Badge variant="outline" className="flex items-center gap-1">
-                        <VisibilityIcon visibility={project.visibility} />
-                        {project.visibility.toLowerCase()}
-                      </Badge>
-                    </div>
-                    <CardDescription className="line-clamp-2">
-                      {project.description || 'No description'}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3.5 w-3.5" />
-                        {formatRelativeTime(project.updatedAt)}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Users className="h-3.5 w-3.5" />
-                        {project._count.members + 1}
-                      </span>
-                      <span>{project._count.videos} videos</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </Link>
-            ))}
-          </div>
-          {totalPages > 1 && (
-            <div className="mt-8 flex items-center justify-end space-x-2">
-              <Button variant="outline" size="sm" disabled={page <= 1} asChild={page > 1}>
-                {page > 1 ? (
-                  <Link href={`/workspaces/${workspaceId}?page=${page - 1}`}>Previous</Link>
-                ) : (
-                  'Previous'
-                )}
-              </Button>
-              <span className="text-sm font-medium">
-                Page {page} of {totalPages}
-              </span>
-              <Button
-                variant="outline"
-                size="sm"
-                disabled={page >= totalPages}
-                asChild={page < totalPages}
-              >
-                {page < totalPages ? (
-                  <Link href={`/workspaces/${workspaceId}?page=${page + 1}`}>Next</Link>
-                ) : (
-                  'Next'
-                )}
-              </Button>
-            </div>
-          )}
-        </>
-      ) : (
-        <Card className="border-dashed">
-          <CardContent className="flex flex-col items-center justify-center py-16">
-            <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
-            <h3 className="text-lg font-medium mb-2">No projects yet</h3>
-            <p className="text-muted-foreground text-center mb-4">
-              Create a project in this workspace to get started
-            </p>
-            {isAdmin && (
-              <Button asChild>
-                <Link href={`/workspaces/${workspaceId}/projects/new`}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Project
-                </Link>
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      )}
+      <PipelineBoard workspaceId={workspaceId} videos={pipelineItems} canEdit={isAdmin} />
+
     </div>
   );
 }
