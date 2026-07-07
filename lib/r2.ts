@@ -305,6 +305,19 @@ export async function createPresignedFilePutUrl(
   return getSignedUrl(getOrCreateR2PresignClient(), command, { expiresIn: expiresInSeconds });
 }
 
+export async function createPresignedFileGetUrl(
+  objectKey: string,
+  downloadName: string,
+  expiresInSeconds: number = 900
+): Promise<string> {
+  const command = new GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: objectKey,
+    ResponseContentDisposition: `attachment; filename="${downloadName.replace(/["\\]/g, '')}"`,
+  });
+  return getSignedUrl(getOrCreateR2PresignClient(), command, { expiresIn: expiresInSeconds });
+}
+
 export async function getR2FileObjectMetadata(key: string): Promise<{
   contentLength: bigint;
   contentType: string | undefined;

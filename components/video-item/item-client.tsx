@@ -108,6 +108,18 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     void loadAssets();
   }, [loadAssets]);
 
+  const uploadsActive =
+    uploads.some((u) => u.state === 'uploading') || uploadingCut !== null || uploadingThumb;
+  useEffect(() => {
+    if (!uploadsActive) return;
+    const warn = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [uploadsActive]);
+
   async function patchItem(payload: Record<string, unknown>) {
     const r = await fetch(`/api/projects/${video.projectId}/videos/${video.id}`, {
       method: 'PATCH',
@@ -145,6 +157,26 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     }
   }
 
+  async function putWithRetry(
+    url: string,
+    file: File,
+    contentType: string,
+    onPct: (pct: number) => void,
+    attempts = 3
+  ) {
+    let lastErr: unknown;
+    for (let i = 0; i < attempts; i++) {
+      try {
+        await putWithProgress(url, file, contentType, onPct);
+        return;
+      } catch (e) {
+        lastErr = e;
+        if (i < attempts - 1) await new Promise((r) => setTimeout(r, 1500 * (i + 1)));
+      }
+    }
+    throw lastErr instanceof Error ? lastErr : new Error('upload failed');
+  }
+
   function putWithProgress(
     url: string,
     file: File,
@@ -178,7 +210,7 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
       });
       if (!initRes.ok) throw new Error((await initRes.json())?.error?.message || 'upload init failed');
       const init = (await initRes.json()).data;
-      await putWithProgress(init.presignedPutUrl, file, init.contentType || file.type, onPct);
+      await putWithRetry(init.presignedPutUrl, file, init.contentType || file.type, onPct);
       const fin = await fetch(`/api/videos/${video.id}/assets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,7 +232,7 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     });
     if (!initRes.ok) throw new Error((await initRes.json())?.error?.message || 'upload init failed');
     const init = (await initRes.json()).data;
-    await putWithProgress(init.presignedPutUrl, file, init.contentType || file.type, onPct);
+    await putWithRetry(init.presignedPutUrl, file, init.contentType || file.type, onPct);
     const fin = await fetch(`/api/videos/${video.id}/assets`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -253,7 +285,7 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     setUploadingThumb(true);
     try {
       const asset = await uploadAsset(file, () => {});
-      const url = `/api/videos/${video.id}/assets/${asset.id}/download`;
+      const url = `/api/videos/${video.id}/assets/${asset.id}/download?inline=1`;
       await patchItem({ thumbnailUrl: url });
       setThumbnailUrl(url);
       toast.success('Thumbnail saved');
@@ -281,7 +313,7 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
       });
       if (!initRes.ok) throw new Error((await initRes.json())?.error?.message || 'upload init failed');
       const init = (await initRes.json()).data;
-      await putWithProgress(init.presignedPutUrl, file, init.contentType || file.type, (pct) =>
+      await putWithRetry(init.presignedPutUrl, file, init.contentType || file.type, (pct) =>
         setUploadingCut(`${pct}%`)
       );
       setUploadingCut('finishing…');

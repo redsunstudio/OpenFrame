@@ -1,4 +1,5 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
+import { createPresignedFileGetUrl } from '@/lib/r2';
 import { VideoAssetProvider } from '@prisma/client';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { rateLimit } from '@/lib/rate-limit';
@@ -114,15 +115,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ? sanitizeFileName(asset.displayName)
         : `${sanitizeFileName(asset.displayName)}${ext}`;
 
+      // Redirect to a short-lived presigned URL so big files stream straight
+      // from object storage instead of through the app server. Inline viewers
+      // (thumbnail <img>) opt out with ?inline=1 and get the proxied bytes.
+      if (request.nextUrl.searchParams.get('inline') !== '1') {
+        const presigned = await createPresignedFileGetUrl(key, downloadName);
+        return NextResponse.redirect(presigned, 302);
+      }
+
       return proxyR2MediaObject({
         request,
         key,
         fallbackContentType: 'application/octet-stream',
         cacheControl: 'private, no-store',
         extraHeaders: {
-          'Content-Disposition': buildContentDisposition(downloadName),
           'X-Content-Type-Options': 'nosniff',
-          'Content-Security-Policy': "default-src 'none'; sandbox",
         },
         internalErrorMessage: 'Failed to retrieve file',
       });

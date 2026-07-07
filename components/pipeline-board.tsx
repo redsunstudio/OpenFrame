@@ -1,9 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Plus, MessageSquare, Film, Loader2, Lightbulb } from 'lucide-react';
+import {
+  Film,
+  Kanban,
+  Lightbulb,
+  List,
+  Loader2,
+  MessageSquare,
+  Plus,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +67,10 @@ const STAGE_DOT: Record<StageKey, string> = {
   REJECTED: 'bg-red-500',
 };
 
+function stageOf(status: string): StageKey {
+  return (PIPELINE_STAGES.find((s) => s.key === status)?.key ?? 'IDEA') as StageKey;
+}
+
 interface PipelineVideo {
   id: string;
   title: string;
@@ -76,13 +88,49 @@ interface PipelineBoardProps {
   canEdit: boolean;
 }
 
+function StagePill({ status }: { status: string }) {
+  const key = stageOf(status);
+  return (
+    <span
+      className={cn(
+        'inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide',
+        STAGE_CHIP[key]
+      )}
+    >
+      {PIPELINE_STAGES.find((s) => s.key === key)?.label}
+    </span>
+  );
+}
+
 export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: PipelineBoardProps) {
   const router = useRouter();
+  const [items, setItems] = useState<PipelineVideo[]>(videos);
+  const [view, setView] = useState<'list' | 'board'>('list');
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [brief, setBrief] = useState('');
   const [creating, setCreating] = useState(false);
-  const [movingId, setMovingId] = useState<string | null>(null);
+  const [dragOverStage, setDragOverStage] = useState<StageKey | null>(null);
+
+  // keep local state in sync with fresh server props
+  useEffect(() => setItems(videos), [videos]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem('kk-pipeline-view');
+    if (stored === 'board' || stored === 'list') setView(stored);
+  }, []);
+  const switchView = (v: 'list' | 'board') => {
+    setView(v);
+    window.localStorage.setItem('kk-pipeline-view', v);
+  };
+
+  const itemHref = useCallback(
+    (v: PipelineVideo) =>
+      workspaceId
+        ? `/workspaces/${workspaceId}/videos/${v.id}`
+        : `/projects/${projectId}/videos/${v.id}`,
+    [workspaceId, projectId]
+  );
 
   async function createIdea() {
     if (!title.trim()) return;
@@ -97,6 +145,19 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
         }
       );
       if (!res.ok) throw new Error((await res.json())?.error?.message || 'Could not create the item');
+      const created = (await res.json()).data;
+      setItems((prev) => [
+        {
+          id: created.id,
+          title: created.title,
+          status: created.status,
+          brief: created.brief,
+          currentVersion: 0,
+          commentCount: 0,
+          projectId: created.projectId,
+        },
+        ...prev,
+      ]);
       toast.success('Added to the pipeline');
       setDialogOpen(false);
       setTitle('');
@@ -109,131 +170,222 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
     }
   }
 
-  async function moveStatus(videoId: string, status: string, rowProjectId?: string) {
-    setMovingId(videoId);
+  /** Optimistic status move — instant UI, background PATCH, revert on failure. */
+  async function moveStatus(videoId: string, next: string) {
+    const current = items.find((v) => v.id === videoId);
+    if (!current || current.status === next) return;
+    const prev = current.status;
+    setItems((list) => list.map((v) => (v.id === videoId ? { ...v, status: next } : v)));
     try {
-      const res = await fetch(`/api/projects/${rowProjectId || projectId}/videos/${videoId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ status }),
-      });
-      if (!res.ok) throw new Error('Could not update status');
-      router.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not update status');
-    } finally {
-      setMovingId(null);
+      const res = await fetch(
+        `/api/projects/${current.projectId || projectId}/videos/${videoId}`,
+        {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: next }),
+        }
+      );
+      if (!res.ok) throw new Error();
+    } catch {
+      setItems((list) => list.map((v) => (v.id === videoId ? { ...v, status: prev } : v)));
+      toast.error('Could not update status — reverted');
     }
   }
 
+  function rowMeta(v: PipelineVideo) {
+    return (
+      <>
+        <span className="text-xs text-muted-foreground inline-flex items-center gap-1 font-mono">
+          {v.currentVersion > 0 ? (
+            <>
+              <Film className="h-3 w-3" />v{v.currentVersion}
+            </>
+          ) : (
+            <>
+              <Lightbulb className="h-3 w-3" />
+              idea
+            </>
+          )}
+        </span>
+        {v.commentCount > 0 && (
+          <span className="text-xs text-muted-foreground inline-flex items-center gap-1 font-mono">
+            <MessageSquare className="h-3 w-3" />
+            {v.commentCount}
+          </span>
+        )}
+      </>
+    );
+  }
+
+  const listView = (
+    <div className="space-y-6">
+      {PIPELINE_STAGES.map((stage) => {
+        const stageItems = items.filter((v) => stageOf(v.status) === stage.key);
+        if (stageItems.length === 0 && stage.key !== 'IDEA') return null;
+        return (
+          <div key={stage.key}>
+            <div className="flex items-center gap-2 mb-2">
+              <span className={cn('h-2 w-2 rounded-full', STAGE_DOT[stage.key])} />
+              <span className="text-sm font-semibold">{stage.label}</span>
+              <span className="text-xs text-muted-foreground font-mono">{stageItems.length}</span>
+            </div>
+            <div className="rounded-lg border divide-y bg-card overflow-hidden">
+              {stageItems.length === 0 && (
+                <p className="text-xs text-muted-foreground px-4 py-3">
+                  Nothing here yet{canEdit ? ' — add the next video idea.' : '.'}
+                </p>
+              )}
+              {stageItems.map((v) => (
+                <div
+                  key={v.id}
+                  className="flex items-center gap-4 px-4 py-2.5 border-l-2 border-l-transparent hover:border-l-primary/70 hover:bg-white/[0.03] transition-all duration-150"
+                >
+                  <Link
+                    href={itemHref(v)}
+                    className="text-sm font-medium hover:text-primary transition-colors truncate flex-1 min-w-0"
+                  >
+                    {v.title}
+                  </Link>
+                  {v.brief && (
+                    <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[240px]">
+                      {v.brief}
+                    </span>
+                  )}
+                  {rowMeta(v)}
+                  {canEdit ? (
+                    <Select value={stageOf(v.status)} onValueChange={(next) => moveStatus(v.id, next)}>
+                      <SelectTrigger className="h-7 w-[124px] text-xs px-2 flex-none">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {PIPELINE_STAGES.map((st) => (
+                          <SelectItem key={st.key} value={st.key} className="text-xs">
+                            {st.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  ) : (
+                    <StagePill status={v.status} />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  const boardView = (
+    <div className="flex gap-3 overflow-x-auto pb-4 -mx-1 px-1">
+      {PIPELINE_STAGES.map((stage) => {
+        const stageItems = items.filter((v) => stageOf(v.status) === stage.key);
+        if (stageItems.length === 0 && ['PUBLISHED', 'REJECTED'].includes(stage.key)) return null;
+        return (
+          <div
+            key={stage.key}
+            className={cn(
+              'flex-none w-[250px] rounded-lg border bg-card/60 transition-colors',
+              dragOverStage === stage.key && 'border-primary/60 bg-primary/5'
+            )}
+            onDragOver={(e) => {
+              if (!canEdit) return;
+              e.preventDefault();
+              setDragOverStage(stage.key);
+            }}
+            onDragLeave={() => setDragOverStage((s) => (s === stage.key ? null : s))}
+            onDrop={(e) => {
+              if (!canEdit) return;
+              e.preventDefault();
+              setDragOverStage(null);
+              const id = e.dataTransfer.getData('text/kk-video');
+              if (id) void moveStatus(id, stage.key);
+            }}
+          >
+            <div className="flex items-center gap-2 px-3 py-2.5 border-b">
+              <span className={cn('h-2 w-2 rounded-full', STAGE_DOT[stage.key])} />
+              <span className="text-xs font-semibold uppercase tracking-wide">{stage.label}</span>
+              <span className="text-xs text-muted-foreground font-mono ml-auto">
+                {stageItems.length}
+              </span>
+            </div>
+            <div className="p-2 space-y-2 min-h-[80px]">
+              {stageItems.map((v) => (
+                <div
+                  key={v.id}
+                  draggable={canEdit}
+                  onDragStart={(e) => e.dataTransfer.setData('text/kk-video', v.id)}
+                  className={cn(
+                    'rounded-md border bg-background p-3 transition-all duration-150 hover:border-primary/50',
+                    canEdit && 'cursor-grab active:cursor-grabbing'
+                  )}
+                >
+                  <Link
+                    href={itemHref(v)}
+                    className="text-sm font-medium hover:text-primary transition-colors line-clamp-2 block"
+                  >
+                    {v.title}
+                  </Link>
+                  {v.brief && (
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.brief}</p>
+                  )}
+                  <div className="flex items-center gap-3 mt-2">{rowMeta(v)}</div>
+                </div>
+              ))}
+              {stageItems.length === 0 && (
+                <p className="text-[11px] text-muted-foreground px-1 py-2">
+                  {canEdit ? 'Drag an item here' : 'Empty'}
+                </p>
+              )}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
   return (
     <div className="mb-10">
-      <div className="flex items-center justify-between mb-4">
+      <div className="flex items-center justify-between mb-4 gap-2">
         <h2 className="text-lg font-semibold">Pipeline</h2>
-        {canEdit && (
-          <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-1.5" />
-            New video idea
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          <div className="flex rounded-md border overflow-hidden">
+            <button
+              className={cn(
+                'px-2.5 py-1.5 text-xs inline-flex items-center gap-1.5 transition-colors',
+                view === 'list'
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              onClick={() => switchView('list')}
+            >
+              <List className="h-3.5 w-3.5" />
+              List
+            </button>
+            <button
+              className={cn(
+                'px-2.5 py-1.5 text-xs inline-flex items-center gap-1.5 border-l transition-colors',
+                view === 'board'
+                  ? 'bg-secondary text-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+              onClick={() => switchView('board')}
+            >
+              <Kanban className="h-3.5 w-3.5" />
+              Board
+            </button>
+          </div>
+          {canEdit && (
+            <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              New video idea
+            </Button>
+          )}
+        </div>
       </div>
 
-      <div className="space-y-6">
-        {PIPELINE_STAGES.map((stage) => {
-          const items = videos.filter((v) => v.status === stage.key);
-          if (items.length === 0 && stage.key !== 'IDEA') return null;
-          return (
-            <div key={stage.key}>
-              <div className="flex items-center gap-2 mb-2">
-                <span className={cn('h-2 w-2 rounded-full', STAGE_DOT[stage.key])} />
-                <span className="text-sm font-semibold">{stage.label}</span>
-                <span className="text-xs text-muted-foreground font-mono">{items.length}</span>
-              </div>
-              <div className="rounded-lg border divide-y bg-background">
-                {items.length === 0 && (
-                  <p className="text-xs text-muted-foreground px-4 py-3">
-                    Nothing here yet{canEdit ? ' — add the next video idea.' : '.'}
-                  </p>
-                )}
-                {items.map((v) => (
-                  <div key={v.id} className="flex items-center gap-4 px-4 py-2.5 border-l-2 border-l-transparent hover:border-l-primary/60 hover:bg-white/[0.03] transition-colors">
-                    {workspaceId ? (
-                      <Link
-                        href={`/workspaces/${workspaceId}/videos/${v.id}`}
-                        className="text-sm font-medium hover:underline truncate flex-1 min-w-0"
-                      >
-                        {v.title}
-                      </Link>
-                    ) : v.currentVersion > 0 ? (
-                      <Link
-                        href={`/projects/${projectId}/videos/${v.id}`}
-                        className="text-sm font-medium hover:underline truncate flex-1 min-w-0"
-                      >
-                        {v.title}
-                      </Link>
-                    ) : (
-                      <span className="text-sm font-medium truncate flex-1 min-w-0">{v.title}</span>
-                    )}
-                    <span
-                      className={cn(
-                        'hidden sm:inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-none',
-                        STAGE_CHIP[(v.status as StageKey) in STAGE_CHIP ? (v.status as StageKey) : 'IDEA']
-                      )}
-                    >
-                      {PIPELINE_STAGES.find((st) => st.key === v.status)?.label ?? v.status}
-                    </span>
-                    {v.brief && (
-                      <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[260px]">
-                        {v.brief}
-                      </span>
-                    )}
-                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1 flex-none w-16">
-                      {v.currentVersion > 0 ? (
-                        <>
-                          <Film className="h-3 w-3" />v{v.currentVersion}
-                        </>
-                      ) : (
-                        <>
-                          <Lightbulb className="h-3 w-3" />
-                          idea
-                        </>
-                      )}
-                    </span>
-                    <span className="text-xs text-muted-foreground inline-flex items-center gap-1 flex-none w-10">
-                      {v.commentCount > 0 && (
-                        <>
-                          <MessageSquare className="h-3 w-3" />
-                          {v.commentCount}
-                        </>
-                      )}
-                    </span>
-                    {canEdit && (
-                      <span className="flex-none">
-                        {movingId === v.id ? (
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                        ) : (
-                          <Select value={v.status} onValueChange={(next) => moveStatus(v.id, next, v.projectId)}>
-                            <SelectTrigger className="h-7 w-[120px] text-xs px-2">
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {PIPELINE_STAGES.map((st) => (
-                                <SelectItem key={st.key} value={st.key} className="text-xs">
-                                  {st.label}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      {view === 'list' ? listView : boardView}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
