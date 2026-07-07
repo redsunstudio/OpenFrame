@@ -91,6 +91,6 @@ export function buildContentSecurityPolicy(): string {
     "object-src 'none'",
     "base-uri 'self'",
     "form-action 'self'",
-    "frame-ancestors 'none'",
+    "frame-ancestors 'self' https://*.apps.johnisaacson.co.uk https://*.up.railway.app",
   ].join('; ');
 }

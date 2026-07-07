@@ -27,7 +27,11 @@ export function ShareLinkBootstrap({ videoId, shareToken }: ShareLinkBootstrapPr
         if (isCancelled) return;
 
         if (response.ok) {
-          router.replace(`/watch/${videoId}`);
+          // Preserve presentation params (embed/accent) through the session redirect.
+          const passthrough = new URLSearchParams(window.location.search);
+          passthrough.delete('shareToken');
+          const qs = passthrough.toString();
+          router.replace(`/watch/${videoId}${qs ? `?${qs}` : ''}`);
           router.refresh();
           return;
         }

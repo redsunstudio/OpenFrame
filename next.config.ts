@@ -17,8 +17,6 @@ const bunnyCdnHostname = resolveBunnyCdnHostname();
 // Content-Security-Policy is set at request time in proxy.ts so runtime storage
 // endpoints (R2_PRESIGN_ENDPOINT, etc.) are available in Docker deployments.
 const securityHeaders = [
-  // Prevent the app from being embedded in foreign iframes (clickjacking)
-  { key: 'X-Frame-Options', value: 'DENY' },
   // Prevent MIME-type sniffing on all responses
   { key: 'X-Content-Type-Options', value: 'nosniff' },
   // Enforce HTTPS for 2 years

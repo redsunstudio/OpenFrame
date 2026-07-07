@@ -73,6 +73,10 @@ interface VideoPageContentProps {
   projectId?: string;
   directUploadsEnabled?: boolean;
   directUploadProvider?: import('@/components/video-page/types').DirectUploadProvider;
+  /** Chrome-less mode for embedding inside the JID client dashboards. */
+  embed?: boolean;
+  /** Hex accent override (e.g. 2ea8e0) used in embed mode to match client brand. */
+  accent?: string;
 }
 
 export function VideoPageContent({
@@ -81,7 +85,15 @@ export function VideoPageContent({
   projectId: propProjectId,
   directUploadsEnabled = false,
   directUploadProvider = 'bunny',
+  embed = false,
+  accent,
 }: VideoPageContentProps) {
+  const safeAccent =
+    accent && /^#?[0-9a-fA-F]{3,8}$/.test(accent)
+      ? accent.startsWith('#')
+        ? accent
+        : `#${accent}`
+      : null;
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const bunnyViewportRef = useRef<HTMLDivElement>(null);
@@ -725,55 +737,60 @@ export function VideoPageContent({
       onMouseUp={handleTimelineMouseUp}
       onMouseLeave={() => isDragging && handleTimelineMouseUp()}
     >
+      {embed && safeAccent && (
+        <style>{`:root, .dark { --primary: ${safeAccent}; --accent: ${safeAccent}; --ring: ${safeAccent}; }`}</style>
+      )}
       <div className="flex-1 flex flex-col lg:flex-row overflow-y-auto lg:overflow-hidden min-h-0">
         <div className={cn('flex-1 w-full flex flex-col min-h-0', isFullscreenMode && 'relative')}>
-          <VideoPageHeader
-            mode={mode}
-            backHref={backHref}
-            title={video.title}
-            projectName={video.project.name}
-            isFullscreenMode={isFullscreenMode}
-            cursorIdle={cursorIdle}
-            isPlaying={isPlaying}
-            versions={video.versions}
-            activeVersion={activeVersion}
-            activeVersionId={activeVersionId}
-            onVersionSelect={headerActions.onVersionSelect}
-            onDeleteCurrentVersionClick={headerActions.onDeleteCurrentVersionClick}
-            showDeleteVersionDialog={showDeleteVersionDialog}
-            setShowDeleteVersionDialog={setShowDeleteVersionDialog}
-            isDeletingVersion={isDeletingVersion}
-            onDeleteVersion={handleDeleteVersion}
-            videoCanDownload={!!video.canDownload}
-            isDownloadingVideo={isDownloadingVideo}
-            activeDownloadTarget={activeDownloadTarget}
-            onDownload={headerActions.onDownload}
-            projectId={projectId}
-            videoId={videoId}
-            directUploadsEnabled={directUploadsEnabled}
-            showVersionDialog={showVersionDialog}
-            setShowVersionDialog={setShowVersionDialog}
-            newVersionMode={newVersionMode}
-            setNewVersionMode={setNewVersionMode}
-            newVersionUrl={newVersionUrl}
-            handleNewVersionUrlChange={handleNewVersionUrlChange}
-            newVersionUrlError={newVersionUrlError}
-            newVersionSource={newVersionSource}
-            newVersionFile={newVersionFile}
-            setNewVersionFile={setNewVersionFile}
-            newVersionLabel={newVersionLabel}
-            setNewVersionLabel={setNewVersionLabel}
-            newVersionUploadStatus={newVersionUploadStatus}
-            newVersionUploadProgress={newVersionUploadProgress}
-            isCreatingVersion={isCreatingVersion}
-            onCreateVersion={headerActions.onCreateVersion}
-            onOpenCompare={headerActions.onOpenCompare}
-            canRequestApproval={canRequestApproval}
-            canShareVideo={canShareVideo}
-            hasPendingApprovalRequest={!!activePendingRequest}
-            onOpenApprovalRequest={handleOpenApprovalRequestDialog}
-            onOpenApprovalsPanel={handleOpenApprovalsPanel}
-          />
+          {!embed && (
+            <VideoPageHeader
+              mode={mode}
+              backHref={backHref}
+              title={video.title}
+              projectName={video.project.name}
+              isFullscreenMode={isFullscreenMode}
+              cursorIdle={cursorIdle}
+              isPlaying={isPlaying}
+              versions={video.versions}
+              activeVersion={activeVersion}
+              activeVersionId={activeVersionId}
+              onVersionSelect={headerActions.onVersionSelect}
+              onDeleteCurrentVersionClick={headerActions.onDeleteCurrentVersionClick}
+              showDeleteVersionDialog={showDeleteVersionDialog}
+              setShowDeleteVersionDialog={setShowDeleteVersionDialog}
+              isDeletingVersion={isDeletingVersion}
+              onDeleteVersion={handleDeleteVersion}
+              videoCanDownload={!!video.canDownload}
+              isDownloadingVideo={isDownloadingVideo}
+              activeDownloadTarget={activeDownloadTarget}
+              onDownload={headerActions.onDownload}
+              projectId={projectId}
+              videoId={videoId}
+              directUploadsEnabled={directUploadsEnabled}
+              showVersionDialog={showVersionDialog}
+              setShowVersionDialog={setShowVersionDialog}
+              newVersionMode={newVersionMode}
+              setNewVersionMode={setNewVersionMode}
+              newVersionUrl={newVersionUrl}
+              handleNewVersionUrlChange={handleNewVersionUrlChange}
+              newVersionUrlError={newVersionUrlError}
+              newVersionSource={newVersionSource}
+              newVersionFile={newVersionFile}
+              setNewVersionFile={setNewVersionFile}
+              newVersionLabel={newVersionLabel}
+              setNewVersionLabel={setNewVersionLabel}
+              newVersionUploadStatus={newVersionUploadStatus}
+              newVersionUploadProgress={newVersionUploadProgress}
+              isCreatingVersion={isCreatingVersion}
+              onCreateVersion={headerActions.onCreateVersion}
+              onOpenCompare={headerActions.onOpenCompare}
+              canRequestApproval={canRequestApproval}
+              canShareVideo={canShareVideo}
+              hasPendingApprovalRequest={!!activePendingRequest}
+              onOpenApprovalRequest={handleOpenApprovalRequestDialog}
+              onOpenApprovalsPanel={handleOpenApprovalsPanel}
+            />
+          )}
 
           <PlayerCore
             activeVersionId={activeVersionId}
