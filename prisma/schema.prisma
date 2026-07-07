@@ -93,6 +93,7 @@ enum VideoAssetKind {
   IMAGE
   VIDEO
   AUDIO
+  FILE
 }
 
 enum VideoAssetProvider {
@@ -101,6 +102,7 @@ enum VideoAssetProvider {
   BUNNY
   R2_AUDIO
   R2_VIDEO
+  R2_FILE
 }
 
 enum VideoStatus {
@@ -348,8 +350,9 @@ model Video {
   description String?  @db.Text
 
   // KreatorKit production pipeline
-  status      VideoStatus @default(REVIEW)
-  brief       String?     @db.Text
+  status       VideoStatus @default(REVIEW)
+  brief        String?     @db.Text
+  thumbnailUrl String?
   
   // Ordering within project
   position    Int      @default(0)

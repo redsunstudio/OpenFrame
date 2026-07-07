@@ -5,7 +5,9 @@ import { parseVideoUrl, getThumbnailUrl } from '@/lib/video-providers';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { rateLimit } from '@/lib/rate-limit';
 import { db } from '@/lib/db';
-import { r2Client, R2_BUCKET_NAME } from '@/lib/r2';
+import { r2Client, R2_BUCKET_NAME,
+  getR2FileObjectMetadata,
+} from '@/lib/r2';
 import { verifyBunnyUploadToken } from '@/lib/bunny-upload-token';
 import { deriveGuestUploadContext, verifyGuestUploadToken } from '@/lib/guest-upload-token';
 import { ensureGuestIdentityFromRequest, setGuestIdentityCookie } from '@/lib/guest-identity';
@@ -51,7 +53,7 @@ const YOUTUBE_TITLE_CACHE_TTL_MS = 5 * 60 * 1000;
 type AssetWithViewerFields = {
   id: string;
   videoId: string;
-  kind: 'IMAGE' | 'VIDEO' | 'AUDIO';
+  kind: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE';
   provider: VideoAssetProvider;
   displayName: string;
   sourceUrl: string;
@@ -103,6 +105,10 @@ function shapeAssetForViewer(
     kind: asset.kind,
     provider: asset.provider,
     displayName: asset.displayName,
+    sizeBytes:
+      typeof (asset as { sizeBytes?: bigint }).sizeBytes === 'bigint'
+        ? (asset as { sizeBytes?: bigint }).sizeBytes!.toString()
+        : null,
     sourceUrl: canExposeSource ? asset.sourceUrl : null,
     providerVideoId: canExposeSource ? asset.providerVideoId : null,
     thumbnailUrl: canExposeSource ? asset.thumbnailUrl : null,
@@ -253,6 +259,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         sourceUrl: true,
         providerVideoId: true,
         thumbnailUrl: true,
+        sizeBytes: true,
         uploadedByUserId: includeDeleteMetadata,
         uploadedByGuestName: true,
         uploadedByGuestIdentityId: includeDeleteMetadata,
@@ -323,7 +330,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       provider !== VideoAssetProvider.YOUTUBE &&
       provider !== VideoAssetProvider.BUNNY &&
       provider !== VideoAssetProvider.R2_AUDIO &&
-      provider !== VideoAssetProvider.R2_VIDEO
+      provider !== VideoAssetProvider.R2_VIDEO &&
+      provider !== VideoAssetProvider.R2_FILE
     ) {
       return apiErrors.badRequest('Invalid provider');
     }
@@ -338,7 +346,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     let sourceUrl = '';
     let providerVideoId: string | null = null;
     let thumbnailUrl: string | null = null;
-    let kind: 'IMAGE' | 'VIDEO' | 'AUDIO' = 'IMAGE';
+    let kind: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' = 'IMAGE';
     let assetSizeBytes = BigInt(0);
 
     const billedUserId = context.video.project.workspace.ownerId;
@@ -412,6 +420,32 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       sourceUrl = parsedSource.originalUrl;
       thumbnailUrl = getThumbnailUrl(parsedSource, 'large');
       kind = 'VIDEO';
+    }
+
+    if (provider === VideoAssetProvider.R2_FILE) {
+      if (!context.viewerUserId) {
+        return apiErrors.forbidden('File uploads require sign-in');
+      }
+      const objectKey = typeof body?.objectKey === 'string' ? body.objectKey.trim() : '';
+      if (!/^files\/[A-Za-z0-9-]{36}-[A-Za-z0-9._ ()-]{1,160}$/.test(objectKey)) {
+        return apiErrors.badRequest('objectKey must reference an uploaded file');
+      }
+      const head = await getR2FileObjectMetadata(objectKey);
+      if (!head || head.contentLength <= BigInt(0)) {
+        return apiErrors.badRequest('Uploaded file not found — upload it first, then finalize');
+      }
+      assetSizeBytes = head.contentLength;
+
+      if (!reservationId) {
+        const reserveResult = await reserveStorageQuota(billedUserId, assetSizeBytes);
+        if ('error' in reserveResult) return reserveResult.error;
+        reservationId = reserveResult.reservationId;
+      }
+
+      const storedName = objectKey.slice(objectKey.indexOf('-') + 1);
+      displayName = sanitizeAssetDisplayName(requestedDisplayName, storedName || 'File');
+      sourceUrl = objectKey; // object key doubles as the retrieval handle for downloads
+      kind = 'FILE';
     }
 
     if (provider === VideoAssetProvider.R2_VIDEO) {

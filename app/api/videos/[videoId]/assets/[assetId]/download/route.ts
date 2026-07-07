@@ -104,6 +104,30 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return apiErrors.badRequest('YouTube assets cannot be downloaded');
     }
 
+    if (asset.provider === VideoAssetProvider.R2_FILE) {
+      const key = asset.sourceUrl;
+      if (!key || !key.startsWith('files/')) {
+        return apiErrors.badRequest('Invalid file asset');
+      }
+      const ext = key.includes('.') ? key.slice(key.lastIndexOf('.')) : '';
+      const downloadName = sanitizeFileName(asset.displayName).endsWith(ext)
+        ? sanitizeFileName(asset.displayName)
+        : `${sanitizeFileName(asset.displayName)}${ext}`;
+
+      return proxyR2MediaObject({
+        request,
+        key,
+        fallbackContentType: 'application/octet-stream',
+        cacheControl: 'private, no-store',
+        extraHeaders: {
+          'Content-Disposition': buildContentDisposition(downloadName),
+          'X-Content-Type-Options': 'nosniff',
+          'Content-Security-Policy': "default-src 'none'; sandbox",
+        },
+        internalErrorMessage: 'Failed to retrieve file',
+      });
+    }
+
     if (asset.provider === VideoAssetProvider.R2_IMAGE) {
       const fileName = extractImageFileNameFromProxyUrl(asset.sourceUrl);
       if (!fileName) return apiErrors.badRequest('Invalid image asset URL');

@@ -176,7 +176,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { title, description, position, status, brief } = body;
+    const { title, description, position, status, brief, thumbnailUrl } = body;
 
     // Validate types before using string methods to prevent type confusion attacks
     if (
@@ -193,6 +193,11 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (brief !== undefined && brief !== null && typeof brief !== 'string') {
       return apiErrors.badRequest('brief must be a string');
     }
+    if (thumbnailUrl !== undefined && thumbnailUrl !== null) {
+      if (typeof thumbnailUrl !== 'string' || !/^\/api\/videos\/[A-Za-z0-9]+\/assets\/[A-Za-z0-9]+\/download$/.test(thumbnailUrl)) {
+        return apiErrors.badRequest('thumbnailUrl must be an asset download path');
+      }
+    }
 
     const updateData: Record<string, unknown> = {};
     if (typeof title === 'string') updateData.title = title.trim();
@@ -200,6 +205,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     if (position !== undefined) updateData.position = position;
     if (status !== undefined) updateData.status = status;
     if (brief !== undefined) updateData.brief = brief === null ? null : brief.trim() || null;
+    if (thumbnailUrl !== undefined) updateData.thumbnailUrl = thumbnailUrl;
 
     const updatedVideo = await db.video.update({
       where: { id: videoId },

@@ -290,6 +290,42 @@ export async function createPresignedVideoPutUrl(
   return getSignedUrl(getOrCreateR2PresignClient(), command, { expiresIn: expiresInSeconds });
 }
 
+export async function createPresignedFilePutUrl(
+  objectKey: string,
+  contentType: string,
+  sizeBytes: bigint,
+  expiresInSeconds: number = DEFAULT_PRESIGNED_PUT_TTL_SECONDS
+): Promise<string> {
+  const command = new PutObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: objectKey,
+    ContentType: contentType,
+    ContentLength: Number(sizeBytes),
+  });
+  return getSignedUrl(getOrCreateR2PresignClient(), command, { expiresIn: expiresInSeconds });
+}
+
+export async function getR2FileObjectMetadata(key: string): Promise<{
+  contentLength: bigint;
+  contentType: string | undefined;
+} | null> {
+  if (!key.startsWith('files/')) {
+    return null;
+  }
+  try {
+    const result = await r2Client.send(
+      new HeadObjectCommand({ Bucket: R2_BUCKET_NAME, Key: key })
+    );
+    const contentLength =
+      typeof result.ContentLength === 'number' && result.ContentLength >= 0
+        ? BigInt(result.ContentLength)
+        : BigInt(0);
+    return { contentLength, contentType: result.ContentType };
+  } catch {
+    return null;
+  }
+}
+
 export async function createPresignedImagePutUrl(
   key: string,
   contentType: string,

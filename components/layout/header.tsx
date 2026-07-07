@@ -54,7 +54,6 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { href: '/dashboard', label: 'Projects', icon: FolderOpen },
   { href: '/workspaces', label: 'Workspaces', icon: Building2 },
 ];
 

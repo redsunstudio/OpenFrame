@@ -67,6 +67,7 @@ export default async function VideoItemPage({ params }: ItemPageProps) {
           title: video.title,
           status: video.status,
           brief: video.brief,
+          thumbnailUrl: video.thumbnailUrl,
           versions: video.versions.map((v) => ({
             id: v.id,
             versionNumber: v.versionNumber,
