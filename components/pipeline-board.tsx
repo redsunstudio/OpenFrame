@@ -37,6 +37,17 @@ export const PIPELINE_STAGES = [
 
 type StageKey = (typeof PIPELINE_STAGES)[number]['key'];
 
+const STAGE_CHIP: Record<StageKey, string> = {
+  IDEA: 'bg-white/5 text-muted-foreground border-white/10',
+  FILMED: 'bg-amber-500/10 text-amber-400 border-amber-500/30',
+  EDITING: 'bg-orange-500/10 text-orange-400 border-orange-500/30',
+  REVIEW: 'bg-primary/10 text-primary border-primary/30',
+  CHANGES: 'bg-blue-400/10 text-blue-300 border-blue-400/30',
+  APPROVED: 'bg-green-500/10 text-green-400 border-green-500/30',
+  PUBLISHED: 'bg-green-700/15 text-green-500 border-green-700/40',
+  REJECTED: 'bg-red-500/10 text-red-400 border-red-500/30',
+};
+
 const STAGE_DOT: Record<StageKey, string> = {
   IDEA: 'bg-muted-foreground',
   FILMED: 'bg-amber-500',
@@ -145,7 +156,7 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
                   </p>
                 )}
                 {items.map((v) => (
-                  <div key={v.id} className="flex items-center gap-4 px-4 py-2.5 hover:bg-muted/40 transition-colors">
+                  <div key={v.id} className="flex items-center gap-4 px-4 py-2.5 border-l-2 border-l-transparent hover:border-l-primary/60 hover:bg-white/[0.03] transition-colors">
                     {workspaceId ? (
                       <Link
                         href={`/workspaces/${workspaceId}/videos/${v.id}`}
@@ -163,6 +174,14 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
                     ) : (
                       <span className="text-sm font-medium truncate flex-1 min-w-0">{v.title}</span>
                     )}
+                    <span
+                      className={cn(
+                        'hidden sm:inline-flex items-center rounded-full border px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide flex-none',
+                        STAGE_CHIP[(v.status as StageKey) in STAGE_CHIP ? (v.status as StageKey) : 'IDEA']
+                      )}
+                    >
+                      {PIPELINE_STAGES.find((st) => st.key === v.status)?.label ?? v.status}
+                    </span>
                     {v.brief && (
                       <span className="hidden lg:block text-xs text-muted-foreground truncate max-w-[260px]">
                         {v.brief}
