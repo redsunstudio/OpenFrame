@@ -53,8 +53,8 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
 }
 
-const navItems: NavItem[] = [
-  { href: '/workspaces', label: 'Workspaces', icon: Building2 },
+const navItems: { href: string; label: string; emoji: string }[] = [
+  { href: '/workspaces', label: 'Workspaces', emoji: '🗂️' },
 ];
 
 interface HeaderProps {
@@ -122,7 +122,7 @@ export function Header({ user, showAppNavigation = false }: HeaderProps) {
                         : 'hover:bg-accent hover:text-accent-foreground'
                     )}
                   >
-                    <item.icon className="h-4 w-4" />
+                    <span className="text-base leading-none">{item.emoji}</span>
                     {item.label}
                   </Link>
                 ))}
@@ -136,8 +136,8 @@ export function Header({ user, showAppNavigation = false }: HeaderProps) {
                       : 'hover:bg-accent hover:text-accent-foreground'
                   )}
                 >
-                  <LayoutDashboard className="h-4 w-4" />
-                  Admin Panel
+                  <span className="text-base leading-none">🛠️</span>
+                  Admin
                 </Link>
               )}
             </nav>
@@ -162,7 +162,7 @@ export function Header({ user, showAppNavigation = false }: HeaderProps) {
                   pathname === item.href ? 'bg-accent text-accent-foreground' : 'hover:bg-accent/50'
                 )}
               >
-                <item.icon className="h-4 w-4" />
+                <span className="text-base leading-none">{item.emoji}</span>
                 {item.label}
               </Link>
             ))}
@@ -176,8 +176,8 @@ export function Header({ user, showAppNavigation = false }: HeaderProps) {
                   : 'hover:bg-accent/50'
               )}
             >
-              <LayoutDashboard className="h-4 w-4" />
-              Admin Panel
+              <span className="text-base leading-none">🛠️</span>
+              Admin
             </Link>
           )}
         </nav>
@@ -205,27 +205,6 @@ export function Header({ user, showAppNavigation = false }: HeaderProps) {
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
-          )}
-          {user && showAppNavigation && (
-            <Button asChild variant="outline" size="sm" className="hidden sm:inline-flex">
-              <Link href="/feedback">
-                <MessageSquareQuote className="h-4 w-4 mr-1.5" />
-                Feedback
-              </Link>
-            </Button>
-          )}
-          {user && showAppNavigation && (
-            <Button
-              asChild
-              variant="ghost"
-              size="icon"
-              className="sm:hidden"
-              aria-label="Feedback and reviews"
-            >
-              <Link href="/feedback">
-                <MessageSquareQuote className="h-4 w-4" />
-              </Link>
-            </Button>
           )}
 
           <ThemeToggle />

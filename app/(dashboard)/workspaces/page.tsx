@@ -103,7 +103,7 @@ export default async function WorkspacesPage({
     updatedAt: w.updatedAt.toISOString(),
     _count: w._count,
     brandAccent: w.brandAccent,
-    coverUrl: coverByWs.get(w.id) ?? null,
+    coverUrl: w.coverKey ? `/api/workspaces/${w.id}/cover` : (coverByWs.get(w.id) ?? null),
     videoCount: countByWs.get(w.id) ?? 0,
   }));
 

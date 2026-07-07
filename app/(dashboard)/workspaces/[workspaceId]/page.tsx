@@ -20,6 +20,7 @@ import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 import { ModuleNav } from '@/components/workspace/module-nav';
 import { PipelineBoard } from '@/components/pipeline-board';
+import { CoverButton } from '@/components/workspace/cover-button';
 
 function VisibilityIcon({ visibility }: { visibility: string }) {
   switch (visibility) {
@@ -173,6 +174,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
           {isAdmin && (
             <>
+              <CoverButton workspaceId={workspaceId} />
               <Button asChild variant="outline" size="sm" className="flex-1 sm:flex-none">
                 <Link href={`/workspaces/${workspaceId}/members`}>
                   <Users className="h-4 w-4 mr-2" />

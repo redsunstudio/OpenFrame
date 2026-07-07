@@ -191,6 +191,7 @@ model Workspace {
   features     Json?
   brandAccent  String?
   brandLogoUrl String?
+  coverKey     String?
   
   // Ownership
   ownerId     String

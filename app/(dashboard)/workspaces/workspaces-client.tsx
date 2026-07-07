@@ -81,60 +81,58 @@ export function WorkspacesClient({
 
       {/* Workspaces Grid */}
       {workspaces.length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {workspaces.map((workspace) => (
             <Link key={workspace.id} href={`/workspaces/${workspace.id}`} className="group">
-              <div className="h-full rounded-2xl border bg-card overflow-hidden transition-all duration-150 group-hover:border-primary/50 group-hover:-translate-y-0.5">
+              <div
+                className="relative aspect-[4/5] rounded-[1.4rem] border bg-card p-4 flex flex-col overflow-hidden transition-all duration-200 ease-out group-hover:-translate-y-1 group-hover:border-white/20"
+                style={{
+                  boxShadow: `0 0 0 rgba(0,0,0,0)`,
+                }}
+              >
+                {/* ambient accent glow behind the artwork */}
                 <div
-                  className="aspect-[16/9] w-full flex items-center justify-center"
-                  style={
-                    workspace.coverUrl
-                      ? undefined
-                      : {
-                          background: `linear-gradient(135deg, ${workspace.brandAccent || '#21262d'}22 0%, #161b22 70%)`,
-                        }
-                  }
-                >
+                  aria-hidden
+                  className="pointer-events-none absolute -top-16 left-1/2 -translate-x-1/2 h-48 w-48 rounded-full blur-3xl opacity-25 group-hover:opacity-40 transition-opacity duration-300"
+                  style={{ background: workspace.brandAccent || '#7d8590' }}
+                />
+                {/* square cover art */}
+                <div className="relative aspect-square w-full rounded-[1rem] overflow-hidden border border-white/10 shadow-lg shadow-black/40">
                   {workspace.coverUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={workspace.coverUrl}
                       alt=""
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-cover transition-transform duration-300 ease-out group-hover:scale-[1.03]"
                     />
                   ) : (
-                    <span
-                      className="text-4xl font-bold opacity-70"
-                      style={{ color: workspace.brandAccent || '#7d8590' }}
+                    <div
+                      className="w-full h-full flex items-center justify-center"
+                      style={{
+                        background: `radial-gradient(circle at 30% 20%, ${workspace.brandAccent || '#30363d'}33, #161b22 75%)`,
+                      }}
                     >
-                      {workspace.name.slice(0, 1).toUpperCase()}
-                    </span>
+                      <span
+                        className="text-6xl font-bold opacity-80"
+                        style={{ color: workspace.brandAccent || '#7d8590' }}
+                      >
+                        {workspace.name.slice(0, 1).toUpperCase()}
+                      </span>
+                    </div>
                   )}
                 </div>
-                <div className="p-4">
-                  <h3 className="font-semibold flex items-center gap-2">
-                    <span
-                      className="h-2 w-2 rounded-full flex-none"
-                      style={{ background: workspace.brandAccent || '#7d8590' }}
-                    />
+                {/* meta */}
+                <div className="relative mt-4 flex-1 flex flex-col">
+                  <h3 className="font-semibold text-[15px] leading-snug line-clamp-1">
                     {workspace.name}
                   </h3>
-                  <p className="text-sm text-muted-foreground line-clamp-2 mt-1 min-h-[1.25rem]">
+                  <p className="text-sm text-muted-foreground line-clamp-2 mt-0.5">
                     {workspace.description || ''}
                   </p>
-                  <div className="flex items-center gap-4 text-xs text-muted-foreground mt-3 font-mono">
-                    <span className="flex items-center gap-1">
-                      <FolderOpen className="h-3.5 w-3.5" />
-                      {workspace.videoCount ?? 0} videos
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Users className="h-3.5 w-3.5" />
-                      {workspace._count.members + 1}
-                    </span>
-                    <span className="flex items-center gap-1 ml-auto">
-                      <Clock className="h-3.5 w-3.5" />
-                      {formatRelativeTime(new Date(workspace.updatedAt))}
-                    </span>
+                  <div className="mt-auto flex items-center gap-3 text-xs text-muted-foreground font-mono pt-3">
+                    <span>🎬 {workspace.videoCount ?? 0}</span>
+                    <span>👥 {workspace._count.members + 1}</span>
+                    <span className="ml-auto">{formatRelativeTime(new Date(workspace.updatedAt))}</span>
                   </div>
                 </div>
               </div>
