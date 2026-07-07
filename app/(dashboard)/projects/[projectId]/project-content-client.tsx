@@ -35,6 +35,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { VideoCard } from '@/components/video-card';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
+import { PipelineBoard } from '@/components/pipeline-board';
 import type { DirectUploadProvider } from '@/components/video-page/types';
 import {
   runProjectDownloadManifest,
@@ -44,6 +45,8 @@ import {
 interface SerializedVideo {
   id: string;
   title: string;
+  status: string;
+  brief: string | null;
   thumbnailUrl: string;
   currentVersion: number;
   commentCount: number;
@@ -431,10 +434,12 @@ export function ProjectContentClient({
         </div>
       )}
 
-      {/* Videos Grid */}
-      {localVideos.length > 0 ? (
+      <PipelineBoard projectId={projectId} videos={localVideos} canEdit={canEdit} />
+
+      {/* Videos Grid — cuts only; idea-stage items live on the pipeline board */}
+      {localVideos.filter((v) => v.currentVersion > 0).length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {localVideos.map((video) => (
+          {localVideos.filter((v) => v.currentVersion > 0).map((video) => (
             <VideoCard
               key={video.id}
               video={video}
