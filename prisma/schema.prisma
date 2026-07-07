@@ -173,6 +173,11 @@ model Workspace {
   name        String
   slug        String   @unique
   description String?  @db.Text
+
+  // KreatorKit: per-client module flags + branding
+  features     Json?
+  brandAccent  String?
+  brandLogoUrl String?
   
   // Ownership
   ownerId     String

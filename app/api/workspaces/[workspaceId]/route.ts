@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { db } from '@/lib/db';
 import { auth, checkWorkspaceAccess } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
+import { parseFeaturesInput } from '@/lib/workspace-features';
 import { collectWorkspaceMediaUrls, deleteMediaFilesBestEffort } from '@/lib/r2-cleanup';
 import { cleanupBunnyStreamVideosBestEffort } from '@/lib/bunny-stream-cleanup';
 import { buildCleanupWarnings, logCleanupWarnings } from '@/lib/cleanup-warnings';
@@ -106,7 +107,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     }
 
     const body = await request.json();
-    const { name, description } = body;
+    const { name, description, features, brandAccent } = body;
 
     if (name !== undefined) {
       if (typeof name !== 'string' || name.trim().length === 0) {
@@ -125,9 +126,23 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
     }
 
+    if (features !== undefined) {
+      const parsed = parseFeaturesInput(features);
+      if (parsed === null) {
+        return apiErrors.badRequest('features must map known modules to booleans');
+      }
+    }
+    if (brandAccent !== undefined && brandAccent !== null) {
+      if (typeof brandAccent !== 'string' || !/^#[0-9a-fA-F]{3,8}$/.test(brandAccent)) {
+        return apiErrors.badRequest('brandAccent must be a hex color like #2ea8e0');
+      }
+    }
+
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name.trim();
     if (description !== undefined) updateData.description = description?.trim() || null;
+    if (features !== undefined) updateData.features = parseFeaturesInput(features);
+    if (brandAccent !== undefined) updateData.brandAccent = brandAccent;
 
     const workspace = await db.workspace.update({
       where: { id: workspaceId },
