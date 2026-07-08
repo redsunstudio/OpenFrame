@@ -93,6 +93,8 @@ interface PipelineVideo {
   currentVersion: number;
   commentCount: number;
   projectId?: string;
+  thumbnailUrl?: string | null;
+  itemThumbnailUrl?: string | null;
 }
 
 interface PipelineBoardProps {
@@ -100,6 +102,29 @@ interface PipelineBoardProps {
   workspaceId?: string;
   videos: PipelineVideo[];
   canEdit: boolean;
+}
+
+function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
+  const src = v.itemThumbnailUrl || v.thumbnailUrl || null;
+  const cls =
+    size === 'row'
+      ? 'h-9 w-16 rounded-md object-cover border border-white/10 flex-none'
+      : 'h-14 w-24 rounded-lg object-cover border border-white/10 flex-none';
+  if (src) {
+    // eslint-disable-next-line @next/next/no-img-element
+    return <img src={src} alt="" className={cls} loading="lazy" />;
+  }
+  return (
+    <div
+      className={cn(
+        cls,
+        'bg-white/[0.04] flex items-center justify-center text-muted-foreground',
+        size === 'row' ? 'text-sm' : 'text-lg'
+      )}
+    >
+      🎬
+    </div>
+  );
 }
 
 function StagePill({ status }: { status: string }) {
@@ -280,6 +305,7 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
                     canEdit && 'cursor-grab active:cursor-grabbing'
                   )}
                 >
+                  <Thumb v={v} size="row" />
                   <Link
                     href={itemHref(v)}
                     className="text-sm font-medium hover:text-primary transition-colors truncate flex-1 min-w-0"
@@ -362,16 +388,21 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
                     canEdit && 'cursor-grab active:cursor-grabbing'
                   )}
                 >
-                  <Link
-                    href={itemHref(v)}
-                    className="text-sm font-medium hover:text-primary transition-colors line-clamp-2 block"
-                  >
-                    {v.title}
-                  </Link>
-                  {v.brief && (
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.brief}</p>
-                  )}
-                  <div className="flex items-center gap-3 mt-2">{rowMeta(v)}</div>
+                  <div className="flex items-start gap-3">
+                    <div className="flex-1 min-w-0">
+                      <Link
+                        href={itemHref(v)}
+                        className="text-sm font-medium hover:text-primary transition-colors line-clamp-2 block"
+                      >
+                        {v.title}
+                      </Link>
+                      {v.brief && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.brief}</p>
+                      )}
+                      <div className="flex items-center gap-3 mt-2">{rowMeta(v)}</div>
+                    </div>
+                    <Thumb v={v} size="card" />
+                  </div>
                 </div>
               ))}
               {stageItems.length === 0 && (

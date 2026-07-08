@@ -140,6 +140,9 @@ export default async function ProjectPage({ params, searchParams }: ProjectPageP
       title: video.title,
       status: video.status,
       brief: video.brief,
+      itemThumbnailUrl: video.thumbnailUrl
+        ? (video.thumbnailUrl.includes('?') ? video.thumbnailUrl : `${video.thumbnailUrl}?inline=1`)
+        : (activeVersion?.thumbnailUrl ?? null),
       thumbnailUrl:
         activeVersion?.thumbnailUrl || 'https://via.placeholder.com/320x180?text=No+Thumbnail',
       currentVersion: video._count.versions,

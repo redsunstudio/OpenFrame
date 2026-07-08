@@ -118,7 +118,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
         where: { isActive: true },
         orderBy: { versionNumber: 'desc' },
         take: 1,
-        select: { id: true, _count: { select: { comments: true } } },
+        select: { id: true, thumbnailUrl: true, _count: { select: { comments: true } } },
       },
       _count: { select: { versions: true } },
     },
@@ -131,6 +131,9 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
     currentVersion: v._count.versions,
     commentCount: v.versions[0]?._count.comments ?? 0,
     projectId: v.projectId,
+    thumbnailUrl: v.thumbnailUrl
+      ? (v.thumbnailUrl.includes('?') ? v.thumbnailUrl : `${v.thumbnailUrl}?inline=1`)
+      : (v.versions[0]?.thumbnailUrl ?? null),
   }));
 
   return (
@@ -155,11 +158,30 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       </div>
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
-        <div>
-          <h1 className="text-3xl font-bold tracking-tight">{workspace.name}</h1>
-          {workspace.description && (
-            <p className="text-muted-foreground mt-1">{workspace.description}</p>
+        <div className="flex items-center gap-4">
+          {workspace.coverKey ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={`/api/workspaces/${workspaceId}/cover`}
+              alt=""
+              className="h-16 w-16 rounded-2xl object-cover border border-white/10 shadow-lg shadow-black/40 flex-none"
+            />
+          ) : (
+            <div
+              className="h-16 w-16 rounded-2xl border border-white/10 flex items-center justify-center text-2xl font-bold flex-none"
+              style={{
+                background: `radial-gradient(circle at 30% 20%, ${workspace.brandAccent || '#30363d'}33, #161b22 75%)`,
+                color: workspace.brandAccent || '#7d8590',
+              }}
+            >
+              {workspace.name.slice(0, 1).toUpperCase()}
+            </div>
           )}
+          <div>
+            <h1 className="text-3xl font-bold tracking-tight">{workspace.name}</h1>
+            {workspace.description && (
+              <p className="text-muted-foreground mt-1">{workspace.description}</p>
+            )}
           <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 mt-2 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
               <FolderOpen className="h-3.5 w-3.5" />
@@ -170,6 +192,7 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
               {workspace._count.members + 1} members
             </span>
           </div>
+        </div>
         </div>
         <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto mt-2 sm:mt-0">
           {isAdmin && (
