@@ -80,14 +80,24 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       versionsCleared += 1;
     }
 
-    // DB first: remove asset rows (except thumbnail). Version rows stay so
-    // comments and history remain.
+    // DB: remove asset rows (except thumbnail) and ALL version rows except the
+    // kept cut. Comments on removed versions go with them; the kept cut's
+    // comments, the brief and the thumbnail remain.
     await db.videoAsset.deleteMany({
       where: {
         videoId,
         ...(thumbnailAssetId ? { id: { not: thumbnailAssetId } } : {}),
       },
     });
+    if (keptVersion) {
+      await db.videoVersion.deleteMany({
+        where: { videoParentId: videoId, id: { not: keptVersion.id } },
+      });
+      await db.videoVersion.update({
+        where: { id: keptVersion.id },
+        data: { isActive: true },
+      });
+    }
 
     // Storage cleanup, best effort.
     if (proxyUrlsToDelete.length > 0) {

@@ -650,8 +650,8 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
             <AlertDialogTitle>Archive this video?</AlertDialogTitle>
             <AlertDialogDescription>
               Warning: this clears all assets for this video and all prior versions aside from
-              the approved version. The thumbnail, comments and brief remain. This can&apos;t be
-              undone.
+              the approved version. The thumbnail, the brief and the final cut with its comments
+              remain. This can&apos;t be undone.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
