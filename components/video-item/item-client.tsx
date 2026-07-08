@@ -101,6 +101,8 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const footageInput = useRef<HTMLInputElement>(null);
   const cutInput = useRef<HTMLInputElement>(null);
   const thumbInput = useRef<HTMLInputElement>(null);
@@ -390,6 +392,22 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     }
   }
 
+  async function deleteVideo() {
+    setDeleting(true);
+    try {
+      const r = await fetch(`/api/projects/${video.projectId}/videos/${video.id}`, {
+        method: 'DELETE',
+      });
+      if (!r.ok) throw new Error((await r.json())?.error?.message || 'Could not delete');
+      toast.success('Video deleted');
+      router.push(`/workspaces/${workspaceId}`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete');
+      setDeleting(false);
+    }
+  }
+
   const archiveEligible = canEdit && ['ARCHIVED', 'REJECTED'].includes(status);
 
   const activeVersion = video.versions.find((v) => v.isActive) ?? video.versions[0];
@@ -400,6 +418,16 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
         <h1 className="text-2xl font-bold tracking-tight">{video.title}</h1>
         <div className="flex items-center gap-2">
+          {canEdit && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="text-muted-foreground hover:text-destructive"
+              onClick={() => setDeleteOpen(true)}
+            >
+              🗑️ Delete
+            </Button>
+          )}
           {archiveEligible && (
             <Button variant="outline" size="sm" onClick={() => setArchiveOpen(true)}>
               📦 Archive video
@@ -643,6 +671,30 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this video?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This permanently removes &quot;{video.title}&quot; — every cut, comment, asset and
+              its files in storage. This can&apos;t be undone. To free storage but keep the
+              record, use Archive instead.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={deleteVideo}
+              disabled={deleting}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {deleting ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : null}
+              Delete video
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>
         <AlertDialogContent>

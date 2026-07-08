@@ -26,6 +26,10 @@ export interface R2CleanupResult {
  * Accept only canonical upload URLs before deriving a storage key.
  */
 export function mediaUrlToKey(url: string): string | null {
+  // KreatorKit generic file assets store the raw object key.
+  if (/^files\/[A-Za-z0-9._()-]+$/.test(url)) {
+    return url;
+  }
   if (SAFE_AUDIO_PATH.test(url)) {
     const filename = url.slice(AUDIO_PATH_PREFIX.length);
     return filename ? `voice/${filename}` : null;
@@ -93,9 +97,9 @@ export async function collectVideoMediaUrls(videoId: string): Promise<string[]> 
     db.videoAsset.findMany({
       where: {
         videoId,
-        provider: 'R2_IMAGE',
+        provider: { in: ['R2_IMAGE', 'R2_AUDIO', 'R2_VIDEO', 'R2_FILE'] },
       },
-      select: { sourceUrl: true },
+      select: { sourceUrl: true, thumbnailUrl: true },
     }),
     db.videoVersion.findMany({
       where: { videoParentId: videoId, providerId: 'r2' },
@@ -109,6 +113,7 @@ export async function collectVideoMediaUrls(videoId: string): Promise<string[]> 
   });
   assets.forEach((asset) => {
     if (asset.sourceUrl) urls.push(asset.sourceUrl);
+    if (asset.thumbnailUrl) urls.push(asset.thumbnailUrl);
   });
   versions.forEach((version) => {
     if (version.originalUrl) urls.push(version.originalUrl);

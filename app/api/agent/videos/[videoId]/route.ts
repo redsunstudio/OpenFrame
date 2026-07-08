@@ -4,6 +4,7 @@ import { db } from '@/lib/db';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { isAgentRequest } from '@/lib/agent-auth';
 import { createPresignedFileGetUrl, createPresignedVideoGetUrl } from '@/lib/r2';
+import { collectVideoMediaUrls, deleteMediaFilesBestEffort } from '@/lib/r2-cleanup';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
@@ -114,5 +115,22 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     logError('agent video patch failed:', error);
     return apiErrors.internalError('Failed to update the video');
+  }
+}
+
+// DELETE /api/agent/videos/[videoId] — permanent removal (item + files).
+export async function DELETE(request: NextRequest, { params }: RouteParams) {
+  try {
+    if (!isAgentRequest(request)) return apiErrors.unauthorized();
+    const { videoId } = await params;
+    const video = await db.video.findUnique({ where: { id: videoId }, select: { id: true } });
+    if (!video) return apiErrors.notFound('Video');
+    const mediaUrls = await collectVideoMediaUrls(videoId);
+    await db.video.delete({ where: { id: videoId } });
+    if (mediaUrls.length > 0) await deleteMediaFilesBestEffort(mediaUrls);
+    return withCacheControl(successResponse({ ok: true, deleted: videoId }), 'private, no-store');
+  } catch (error) {
+    logError('agent video delete failed:', error);
+    return apiErrors.internalError('Failed to delete the video');
   }
 }
