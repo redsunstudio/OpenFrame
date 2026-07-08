@@ -614,6 +614,24 @@ export function VideoItemClient({
 
   const archiveEligible = canEdit && ['ARCHIVED', 'REJECTED'].includes(status);
   const isPost = videoType === 'POST';
+  const approvable = ['IDEA', 'EDITING', 'REVIEW'].includes(stageOf(status));
+  const [approving, setApproving] = useState(false);
+
+  async function approve() {
+    setApproving(true);
+    try {
+      const r = await fetch(`/api/videos/${video.id}/approve`, { method: 'POST' });
+      if (!r.ok) throw new Error((await r.json())?.error?.message || 'Could not approve');
+      setStatus('APPROVED');
+      toast.success('Approved ✅');
+      await loadNotes();
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not approve');
+    } finally {
+      setApproving(false);
+    }
+  }
 
   const activeVersion = video.versions.find((v) => v.isActive) ?? video.versions[0];
 
@@ -717,16 +735,31 @@ export function VideoItemClient({
 
       {/* Actions row */}
       <div className="flex flex-wrap items-center gap-2">
+        {approvable && (
+          <Button
+            size="sm"
+            variant="outline"
+            className="border-green-700/50 text-green-500 hover:bg-green-500/10 hover:text-green-400"
+            onClick={() => void approve()}
+            disabled={approving}
+          >
+            {approving ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '✅ '}
+            Approve
+          </Button>
+        )}
         {canEdit && !isPost && publishReady && video.versions.length > 0 && (
           <Button size="sm" onClick={() => setPublishOpen(true)}>
             📺 Push to YouTube
           </Button>
         )}
-        {canEdit && isPost && linkedInReady && (
-          <Button size="sm" onClick={() => setPublishOpen(true)}>
-            💼 Push to LinkedIn
-          </Button>
-        )}
+        {canEdit &&
+          isPost &&
+          linkedInReady &&
+          ['APPROVED', 'PUBLISHED'].includes(stageOf(status)) && (
+            <Button size="sm" onClick={() => setPublishOpen(true)}>
+              💼 Push to LinkedIn
+            </Button>
+          )}
         <Select value={videoType} onValueChange={changeType} disabled={!canEdit}>
           <SelectTrigger className="w-[130px]">
             <SelectValue />
@@ -772,70 +805,72 @@ export function VideoItemClient({
 
       {/* Cuts: watch, review, upload new (not for written posts) */}
       {!isPost && (
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Play className="h-4 w-4" />
-              Cuts
-            </span>
-            {canEdit && (
-              <>
-                <input
-                  ref={cutInput}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    void uploadCut(e.target.files);
-                    e.target.value = '';
-                  }}
-                />
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => cutInput.current?.click()}
-                  disabled={uploadingCut !== null}
-                >
-                  {uploadingCut !== null ? (
-                    <>
-                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                      {uploadingCut}
-                    </>
-                  ) : (
-                    <>
-                      <Upload className="h-4 w-4 mr-1.5" />
-                      Upload new cut
-                    </>
-                  )}
-                </Button>
-              </>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {video.versions.length === 0 && (
-            <p className="text-xs text-muted-foreground">
-              No cuts yet — when the edit lands here it moves straight into review.
-            </p>
-          )}
-          {video.versions.map((v) => (
-            <div key={v.id} className="flex items-center gap-3 text-sm">
-              <Film className="h-3.5 w-3.5 text-muted-foreground" />
-              <span className="font-medium">
-                v{v.versionNumber}
-                {v.versionLabel ? ` — ${v.versionLabel}` : ''}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Play className="h-4 w-4" />
+                Cuts
               </span>
-              {v.id === activeVersion?.id && (
-                <span className="text-xs text-muted-foreground">current</span>
+              {canEdit && (
+                <>
+                  <input
+                    ref={cutInput}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(e) => {
+                      void uploadCut(e.target.files);
+                      e.target.value = '';
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => cutInput.current?.click()}
+                    disabled={uploadingCut !== null}
+                  >
+                    {uploadingCut !== null ? (
+                      <>
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                        {uploadingCut}
+                      </>
+                    ) : (
+                      <>
+                        <Upload className="h-4 w-4 mr-1.5" />
+                        Upload new cut
+                      </>
+                    )}
+                  </Button>
+                </>
               )}
-              <Button asChild size="sm" variant="outline" className="ml-auto h-7">
-                <Link href={`/projects/${video.projectId}/videos/${video.id}`}>Watch & review</Link>
-              </Button>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {video.versions.length === 0 && (
+              <p className="text-xs text-muted-foreground">
+                No cuts yet — when the edit lands here it moves straight into review.
+              </p>
+            )}
+            {video.versions.map((v) => (
+              <div key={v.id} className="flex items-center gap-3 text-sm">
+                <Film className="h-3.5 w-3.5 text-muted-foreground" />
+                <span className="font-medium">
+                  v{v.versionNumber}
+                  {v.versionLabel ? ` — ${v.versionLabel}` : ''}
+                </span>
+                {v.id === activeVersion?.id && (
+                  <span className="text-xs text-muted-foreground">current</span>
+                )}
+                <Button asChild size="sm" variant="outline" className="ml-auto h-7">
+                  <Link href={`/projects/${video.projectId}/videos/${video.id}`}>
+                    Watch & review
+                  </Link>
+                </Button>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
       )}
 
       {/* Brief + description */}
@@ -1174,88 +1209,88 @@ export function VideoItemClient({
             </AlertDialogFooter>
           </AlertDialogContent>
         ) : (
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>📺 Push to YouTube</AlertDialogTitle>
-            <AlertDialogDescription>
-              The current cut lands in the channel&apos;s YouTube Studio as a private draft — set it
-              live from Studio when ready. Three things need to be in first:
-            </AlertDialogDescription>
-          </AlertDialogHeader>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>📺 Push to YouTube</AlertDialogTitle>
+              <AlertDialogDescription>
+                The current cut lands in the channel&apos;s YouTube Studio as a private draft — set
+                it live from Studio when ready. Three things need to be in first:
+              </AlertDialogDescription>
+            </AlertDialogHeader>
 
-          <div className="space-y-4 text-sm">
-            <div className="flex items-start gap-2.5">
-              <span className="flex-none mt-0.5">{title.trim() ? '✅' : '❌'}</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">Title</p>
-                <p className="text-muted-foreground truncate">
-                  {title.trim() || 'Missing — rename the video first'}
-                </p>
+            <div className="space-y-4 text-sm">
+              <div className="flex items-start gap-2.5">
+                <span className="flex-none mt-0.5">{title.trim() ? '✅' : '❌'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Title</p>
+                  <p className="text-muted-foreground truncate">
+                    {title.trim() || 'Missing — rename the video first'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="flex-none mt-0.5">{description.trim() ? '✅' : '❌'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Description</p>
+                  {description.trim() ? (
+                    <p className="text-muted-foreground line-clamp-2">{description}</p>
+                  ) : (
+                    <Textarea
+                      value={description}
+                      onChange={(e) => onDescriptionChange(e.target.value)}
+                      onBlur={onDescriptionBlur}
+                      placeholder="Write the YouTube description here…"
+                      rows={3}
+                      maxLength={5000}
+                      className="mt-1.5 text-sm"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="flex-none mt-0.5">{thumbnailUrl ? '✅' : '❌'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Thumbnail</p>
+                  {thumbnailUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={thumbnailUrl.includes('?') ? thumbnailUrl : `${thumbnailUrl}?inline=1`}
+                      alt=""
+                      className="mt-1.5 h-16 rounded-md border object-cover"
+                    />
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="mt-1.5"
+                      disabled={uploadingThumb}
+                      onClick={() => thumbInput.current?.click()}
+                    >
+                      {uploadingThumb ? (
+                        <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      ) : (
+                        <Upload className="h-4 w-4 mr-1.5" />
+                      )}
+                      Upload thumbnail
+                    </Button>
+                  )}
+                </div>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5">
-              <span className="flex-none mt-0.5">{description.trim() ? '✅' : '❌'}</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">Description</p>
-                {description.trim() ? (
-                  <p className="text-muted-foreground line-clamp-2">{description}</p>
-                ) : (
-                  <Textarea
-                    value={description}
-                    onChange={(e) => onDescriptionChange(e.target.value)}
-                    onBlur={onDescriptionBlur}
-                    placeholder="Write the YouTube description here…"
-                    rows={3}
-                    maxLength={5000}
-                    className="mt-1.5 text-sm"
-                  />
-                )}
-              </div>
-            </div>
-
-            <div className="flex items-start gap-2.5">
-              <span className="flex-none mt-0.5">{thumbnailUrl ? '✅' : '❌'}</span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium">Thumbnail</p>
-                {thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={thumbnailUrl.includes('?') ? thumbnailUrl : `${thumbnailUrl}?inline=1`}
-                    alt=""
-                    className="mt-1.5 h-16 rounded-md border object-cover"
-                  />
-                ) : (
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    className="mt-1.5"
-                    disabled={uploadingThumb}
-                    onClick={() => thumbInput.current?.click()}
-                  >
-                    {uploadingThumb ? (
-                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                    ) : (
-                      <Upload className="h-4 w-4 mr-1.5" />
-                    )}
-                    Upload thumbnail
-                  </Button>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={publishing}>Cancel</AlertDialogCancel>
-            <Button
-              onClick={() => void pushToYouTube()}
-              disabled={publishing || !title.trim() || !description.trim() || !thumbnailUrl}
-            >
-              {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📺 '}
-              Push to YouTube
-            </Button>
-          </AlertDialogFooter>
-        </AlertDialogContent>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={publishing}>Cancel</AlertDialogCancel>
+              <Button
+                onClick={() => void pushToYouTube()}
+                disabled={publishing || !title.trim() || !description.trim() || !thumbnailUrl}
+              >
+                {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📺 '}
+                Push to YouTube
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
         )}
       </AlertDialog>
 

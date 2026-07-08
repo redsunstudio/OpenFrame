@@ -59,6 +59,14 @@ export async function publishPostToLinkedIn(
   const copy = video.description?.trim();
   if (!copy) throw new PublishError('Not ready to post — write the post copy first');
 
+  // The client reviews IN KreatorKit — nothing reaches Zernio or LinkedIn
+  // until the item carries their sign-off.
+  if (video.status !== 'APPROVED' && video.status !== 'PUBLISHED') {
+    throw new PublishError(
+      'Not approved yet — the post needs sign-off (✅ Approve) before it goes anywhere'
+    );
+  }
+
   // Isolation guard (same rule as YouTube): the wired profile must be visible
   // to this workspace's own key.
   const visible = await zernioListAccounts(apiKey).catch(() => null);

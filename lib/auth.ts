@@ -148,8 +148,9 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   },
   callbacks: {
     async signIn({ account, profile }) {
-      // Credentials sign-in is handled by the authorize() function above
-      if (account?.provider === 'credentials') return true;
+      // Credentials-style sign-ins (password + email-code) are fully handled
+      // by their authorize() functions above.
+      if (account?.type === 'credentials') return true;
 
       // Reject OAuth sign-ins where the provider email is not verified.
       // Google always sets email_verified: true. GitHub does not guarantee it.
