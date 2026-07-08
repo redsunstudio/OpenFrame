@@ -146,6 +146,7 @@ export function PipelineBoard({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [title, setTitle] = useState('');
   const [brief, setBrief] = useState('');
+  const [postCopy, setPostCopy] = useState('');
   const [videoType, setVideoType] = useState('LONGFORM');
   const [creating, setCreating] = useState(false);
   const [dragOverStage, setDragOverStage] = useState<StageKey | null>(null);
@@ -183,6 +184,7 @@ export function PipelineBoard({
             planned: true,
             title: title.trim(),
             brief: brief.trim() || null,
+            ...(videoType === 'POST' && postCopy.trim() ? { description: postCopy.trim() } : {}),
             videoType,
           }),
         }
@@ -207,6 +209,7 @@ export function PipelineBoard({
       setDialogOpen(false);
       setTitle('');
       setBrief('');
+      setPostCopy('');
       setVideoType('LONGFORM');
       router.refresh();
     } catch (e) {
@@ -460,7 +463,7 @@ export function PipelineBoard({
           {canEdit && (
             <Button size="sm" variant="outline" onClick={() => setDialogOpen(true)}>
               <Plus className="h-4 w-4 mr-1.5" />
-              New video idea
+              {allowPosts ? 'New item' : 'New video idea'}
             </Button>
           )}
         </div>
@@ -471,16 +474,11 @@ export function PipelineBoard({
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>New video idea</DialogTitle>
+            <DialogTitle>
+              {videoType === 'POST' ? '📝 New LinkedIn post' : 'New video idea'}
+            </DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
-            <Input
-              placeholder='Working title — e.g. "iPhone 17 vs iPhone 16"'
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              maxLength={200}
-              autoFocus
-            />
             <Select value={videoType} onValueChange={setVideoType}>
               <SelectTrigger className="w-full">
                 <SelectValue />
@@ -493,13 +491,34 @@ export function PipelineBoard({
                 ))}
               </SelectContent>
             </Select>
-            <Textarea
-              placeholder="Brief (optional) — the angle, the hook, anything the shoot or edit needs to know"
-              value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              rows={4}
-              maxLength={5000}
+            <Input
+              placeholder={
+                videoType === 'POST'
+                  ? 'Internal title — e.g. "Cuff tear case study post" (never published)'
+                  : 'Working title — e.g. "iPhone 17 vs iPhone 16"'
+              }
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              maxLength={200}
+              autoFocus
             />
+            {videoType === 'POST' ? (
+              <Textarea
+                placeholder="Post copy (optional here) — write it now or on the item page. @tags welcome."
+                value={postCopy}
+                onChange={(e) => setPostCopy(e.target.value)}
+                rows={6}
+                maxLength={5000}
+              />
+            ) : (
+              <Textarea
+                placeholder="Brief (optional) — the angle, the hook, anything the shoot or edit needs to know"
+                value={brief}
+                onChange={(e) => setBrief(e.target.value)}
+                rows={4}
+                maxLength={5000}
+              />
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)} disabled={creating}>
@@ -507,7 +526,7 @@ export function PipelineBoard({
             </Button>
             <Button onClick={createIdea} disabled={creating || !title.trim()}>
               {creating ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
-              Add to pipeline
+              {videoType === 'POST' ? 'Create post' : 'Add to pipeline'}
             </Button>
           </DialogFooter>
         </DialogContent>
