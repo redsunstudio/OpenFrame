@@ -71,6 +71,8 @@ interface VideoPageContentProps {
   mode: VideoPageMode;
   videoId: string;
   projectId?: string;
+  /** Where the back arrow goes (KreatorKit: the workspace pipeline, not the project). */
+  backHrefOverride?: string;
   directUploadsEnabled?: boolean;
   directUploadProvider?: import('@/components/video-page/types').DirectUploadProvider;
   /** Chrome-less mode for embedding inside the KreatorKit client dashboards. */
@@ -83,6 +85,7 @@ export function VideoPageContent({
   mode,
   videoId,
   projectId: propProjectId,
+  backHrefOverride,
   directUploadsEnabled = false,
   directUploadProvider = 'bunny',
   embed = false,
@@ -572,11 +575,12 @@ export function VideoPageContent({
 
   const containerHeight = 'h-screen';
   const backHref =
-    mode === 'dashboard'
+    backHrefOverride ??
+    (mode === 'dashboard'
       ? `/projects/${propProjectId}`
       : video?.projectId
         ? `/projects/${video.projectId}`
-        : '/';
+        : '/');
   const isBunnyVersion = activeVersion?.providerId === 'bunny';
   const showBunnyProcessingOverlay =
     isBunnyVersion && bunnyPlaybackState === 'processing' && !isReady;

@@ -1,5 +1,6 @@
 import { VideoPageContent } from '@/components/video-page-content';
 import { auth } from '@/lib/auth';
+import { db } from '@/lib/db';
 import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 import { requireVideoProjectAccessOrRedirect } from '@/lib/route-access';
 
@@ -19,11 +20,19 @@ export default async function VideoPage({ params }: VideoPageProps) {
     allowPublicView: true,
   });
 
+  // Back from a review goes straight to the workspace pipeline — the
+  // projects layer is an internal implementation detail.
+  const project = await db.project.findUnique({
+    where: { id: projectId },
+    select: { workspaceId: true },
+  });
+
   return (
     <VideoPageContent
       mode="dashboard"
       videoId={videoId}
       projectId={projectId}
+      backHrefOverride={project?.workspaceId ? `/workspaces/${project.workspaceId}` : undefined}
       directUploadsEnabled={isDirectFileUploadEnabled()}
       directUploadProvider={isS3VideoUploadsEnabled() ? 'r2' : 'bunny'}
     />
