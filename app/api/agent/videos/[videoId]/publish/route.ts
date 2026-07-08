@@ -22,7 +22,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const item = await db.video.findUnique({ where: { id: videoId }, select: { videoType: true } });
     if (item?.videoType === 'POST') {
       const result = await publishPostToLinkedIn(videoId, {
-        mode: body?.mode === 'live' ? 'live' : 'draft',
+        mode: body?.mode === 'live' ? 'live' : body?.mode === 'queue' ? 'queue' : 'draft',
         scheduledFor: typeof body?.scheduledFor === 'string' ? body.scheduledFor : undefined,
         actorName: 'Agency OS',
       });

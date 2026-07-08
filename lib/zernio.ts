@@ -45,6 +45,7 @@ export interface ZernioChannel {
   platform: string;
   username: string;
   profileName: string | null;
+  profileId: string | null;
 }
 
 /** Connected accounts on the Zernio workspace this key belongs to. */
@@ -64,6 +65,12 @@ export async function zernioListAccounts(apiKey: string): Promise<ZernioChannel[
         profile && typeof profile === 'object' && typeof profile.name === 'string'
           ? profile.name
           : null,
+      profileId:
+        profile && typeof profile === 'object' && profile._id
+          ? String(profile._id)
+          : typeof profile === 'string'
+            ? profile
+            : null,
     };
   });
 }
@@ -190,6 +197,8 @@ export async function zernioCreatePost(
     platforms: ZernioPlatformTarget[];
     isDraft?: boolean;
     publishNow?: boolean;
+    scheduledFor?: string;
+    queuedFromProfile?: string;
   },
   apiKey: string
 ): Promise<{ postId: string | null; raw: Record<string, unknown> }> {

@@ -323,8 +323,8 @@ export function VideoItemClient({
     }
   }
 
-  /** BETA: push a POST item to LinkedIn (draft / scheduled / live) via Zernio. */
-  async function pushToLinkedIn(mode: 'draft' | 'live') {
+  /** BETA: push a POST item to LinkedIn (draft / queue / scheduled / live) via Zernio. */
+  async function pushToLinkedIn(mode: 'draft' | 'queue' | 'live') {
     setPublishing(true);
     try {
       const r = await fetch(`/api/videos/${video.id}/publish`, {
@@ -343,6 +343,12 @@ export function VideoItemClient({
       if (result.mode === 'live') {
         setStatus('PUBLISHED');
         toast.success('Posted to LinkedIn 📝');
+      } else if (result.mode === 'queue') {
+        toast.success(
+          result.scheduledFor
+            ? `In the queue — goes out ${new Date(result.scheduledFor).toLocaleString('en-GB', { weekday: 'short', hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short' })}`
+            : 'Added to the LinkedIn queue'
+        );
       } else if (result.mode === 'scheduled') {
         toast.success('Scheduled in Zernio — confirm any @tags there');
       } else {
@@ -1388,6 +1394,14 @@ export function VideoItemClient({
               >
                 {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📤 '}
                 {scheduleFor ? 'Schedule' : 'Draft in Zernio'}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void pushToLinkedIn('queue')}
+                disabled={publishing || !description.trim() || Boolean(scheduleFor)}
+              >
+                {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📆 '}
+                Add to queue
               </Button>
               <Button
                 onClick={() => void pushToLinkedIn('live')}

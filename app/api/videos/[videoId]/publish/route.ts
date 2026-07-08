@@ -79,7 +79,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     // BETA: written POST items go to LinkedIn, everything else to YouTube.
     if (ctx.video.videoType === 'POST') {
       const result = await publishPostToLinkedIn(videoId, {
-        mode: body?.mode === 'live' ? 'live' : 'draft',
+        mode: body?.mode === 'live' ? 'live' : body?.mode === 'queue' ? 'queue' : 'draft',
         scheduledFor: typeof body?.scheduledFor === 'string' ? body.scheduledFor : undefined,
         actorName: session.user.name ?? undefined,
       });

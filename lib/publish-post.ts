@@ -13,7 +13,7 @@ import { isImageAsset } from '@/lib/video-type';
 import { zernioCreatePost, zernioListAccounts, zernioUploadFromUrl } from '@/lib/zernio';
 import type { ZernioMediaItem } from '@/lib/zernio';
 
-export type PostPublishMode = 'draft' | 'live';
+export type PostPublishMode = 'draft' | 'live' | 'queue';
 
 function guessImageContentType(name: string): string {
   if (/\.png$/i.test(name)) return 'image/png';
@@ -27,6 +27,7 @@ export interface PostPublishResult {
   accountId: string;
   mediaKind: 'video' | 'images' | 'document' | 'text';
   mediaCount: number;
+  scheduledFor?: string | null;
 }
 
 export async function publishPostToLinkedIn(
@@ -74,10 +75,14 @@ export async function publishPostToLinkedIn(
   if (!visible) {
     throw new PublishError("This workspace's Zernio key was rejected — re-check it in Settings");
   }
-  if (!visible.some((a) => a.id === cfg.linkedinAccountId && a.platform === 'linkedin')) {
+  const channel = visible.find((a) => a.id === cfg.linkedinAccountId && a.platform === 'linkedin');
+  if (!channel) {
     throw new PublishError(
       "The wired LinkedIn profile isn't visible to this workspace's Zernio key — re-pick it in Settings"
     );
+  }
+  if (opts.mode === 'queue' && !channel.profileId) {
+    throw new PublishError('Could not resolve the Zernio profile for queueing');
   }
 
   // Post extras — mentions live inside the copy already (@[Name](urn)).
@@ -146,7 +151,7 @@ export async function publishPostToLinkedIn(
   if (options.firstComment) platformSpecificData.firstComment = options.firstComment.slice(0, 1250);
 
   const scheduledFor = opts.scheduledFor?.trim();
-  const { postId } = await zernioCreatePost(
+  const { postId, raw } = await zernioCreatePost(
     {
       content: copy,
       mediaItems,
@@ -159,22 +164,36 @@ export async function publishPostToLinkedIn(
       ],
       ...(opts.mode === 'live'
         ? { publishNow: true }
-        : scheduledFor
-          ? ({ scheduledFor } as Record<string, unknown>)
-          : { isDraft: true }),
+        : opts.mode === 'queue'
+          ? { queuedFromProfile: channel.profileId as string }
+          : scheduledFor
+            ? { scheduledFor }
+            : { isDraft: true }),
     },
     apiKey
   );
 
+  // Queue posts come back with their assigned slot time.
+  const rawPost = (raw.post ?? raw.data ?? raw) as Record<string, unknown>;
+  const slot = typeof rawPost.scheduledFor === 'string' ? rawPost.scheduledFor : null;
+
   const mode: PostPublishResult['mode'] =
-    opts.mode === 'live' ? 'live' : scheduledFor ? 'scheduled' : 'draft';
+    opts.mode === 'live'
+      ? 'live'
+      : opts.mode === 'queue'
+        ? 'queue'
+        : scheduledFor
+          ? 'scheduled'
+          : 'draft';
   const by = opts.actorName ? ` — by ${opts.actorName}` : '';
   const noteBody =
     mode === 'live'
       ? `📝 Posted to LinkedIn via Zernio${postId ? ` (post ${postId})` : ''}${by}`
-      : mode === 'scheduled'
-        ? `📝 Scheduled on LinkedIn via Zernio for ${scheduledFor}${postId ? ` (post ${postId})` : ''}${by}. Confirm any @tags in the Zernio editor.`
-        : `📝 Drafted in Zernio for LinkedIn${postId ? ` (post ${postId})` : ''}${by}. Confirm any @tags there, then schedule or post.`;
+      : mode === 'queue'
+        ? `📆 Added to the LinkedIn queue${slot ? ` — goes out ${slot}` : ''}${postId ? ` (post ${postId})` : ''}${by}`
+        : mode === 'scheduled'
+          ? `📝 Scheduled on LinkedIn via Zernio for ${scheduledFor}${postId ? ` (post ${postId})` : ''}${by}. Confirm any @tags in the Zernio editor.`
+          : `📝 Drafted in Zernio for LinkedIn${postId ? ` (post ${postId})` : ''}${by}. Confirm any @tags there, then schedule or post.`;
   await db.videoNote.create({ data: { videoId: video.id, body: noteBody } });
 
   await db.video.update({
@@ -191,5 +210,6 @@ export async function publishPostToLinkedIn(
     accountId: cfg.linkedinAccountId,
     mediaKind,
     mediaCount: mediaItems.length,
+    scheduledFor: slot ?? scheduledFor ?? null,
   };
 }
