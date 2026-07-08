@@ -109,7 +109,7 @@ function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
   const cls =
     size === 'row'
       ? 'h-9 w-16 rounded-md object-cover border border-white/10 flex-none'
-      : 'h-14 w-24 rounded-lg object-cover border border-white/10 flex-none';
+      : 'w-full aspect-video rounded-lg object-cover border border-white/10';
   if (src) {
     // eslint-disable-next-line @next/next/no-img-element
     return <img src={src} alt="" className={cls} loading="lazy" />;
@@ -119,7 +119,7 @@ function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
       className={cn(
         cls,
         'bg-white/[0.04] flex items-center justify-center text-muted-foreground',
-        size === 'row' ? 'text-sm' : 'text-lg'
+        size === 'row' ? 'text-sm' : 'text-2xl'
       )}
     >
       🎬
@@ -388,21 +388,16 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
                     canEdit && 'cursor-grab active:cursor-grabbing'
                   )}
                 >
-                  <div className="flex items-start gap-3">
-                    <div className="flex-1 min-w-0">
-                      <Link
-                        href={itemHref(v)}
-                        className="text-sm font-medium hover:text-primary transition-colors line-clamp-2 block"
-                      >
-                        {v.title}
-                      </Link>
-                      {v.brief && (
-                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{v.brief}</p>
-                      )}
-                      <div className="flex items-center gap-3 mt-2">{rowMeta(v)}</div>
-                    </div>
+                  <Link href={itemHref(v)} className="block">
                     <Thumb v={v} size="card" />
-                  </div>
+                  </Link>
+                  <Link
+                    href={itemHref(v)}
+                    className="text-sm font-medium hover:text-primary transition-colors line-clamp-2 block mt-2.5"
+                  >
+                    {v.title}
+                  </Link>
+                  <div className="flex items-center gap-3 mt-2">{rowMeta(v)}</div>
                 </div>
               ))}
               {stageItems.length === 0 && (
