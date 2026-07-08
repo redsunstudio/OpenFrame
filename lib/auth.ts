@@ -9,6 +9,8 @@ import { ProjectMemberRole, WorkspaceMemberRole } from '@prisma/client';
 import { hasBillingAccess } from '@/lib/billing';
 import { isInviteCodeRequired } from '@/lib/feature-flags';
 import { isEmailVerificationEnabled } from '@/lib/email-verification';
+import { normalizeEmail, verifyLoginCode } from '@/lib/otp';
+import { acceptPendingInvitationsForUser } from '@/lib/invitations';
 
 // Dummy hash for timing-safe comparison when user doesn't exist
 // This prevents user enumeration via timing attacks
@@ -51,6 +53,58 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
         // Block sign-in when email verification is required but not yet completed
         if (isEmailVerificationEnabled() && !user.emailVerified) {
           return null;
+        }
+
+        return {
+          id: user.id,
+          name: user.name,
+          email: user.email,
+          image: user.image,
+        };
+      },
+    }),
+    // Passwordless: email-code sign-in (the client-facing flow). A verified
+    // code proves the email; invited members get their account created and
+    // every pending invitation accepted right here — no password, no invite code.
+    Credentials({
+      id: 'otp',
+      name: 'email-code',
+      credentials: {
+        email: { label: 'Email', type: 'email' },
+        code: { label: 'Code', type: 'text' },
+      },
+      async authorize(credentials) {
+        if (!credentials?.email || !credentials?.code) return null;
+        const email = normalizeEmail(credentials.email as string);
+        const valid = await verifyLoginCode(email, credentials.code as string);
+        if (!valid) return null;
+
+        let user = await db.user.findUnique({ where: { email } });
+        if (!user) {
+          // Only invited emails ever receive a code, so creation is safe here.
+          const pending = await db.invitation.findFirst({
+            where: { email, status: 'PENDING', expiresAt: { gt: new Date() } },
+            select: { id: true },
+          });
+          if (!pending) return null;
+          user = await db.user.create({
+            data: {
+              email,
+              name: email.split('@')[0],
+              emailVerified: new Date(),
+            },
+          });
+        } else if (!user.emailVerified) {
+          user = await db.user.update({
+            where: { id: user.id },
+            data: { emailVerified: new Date() },
+          });
+        }
+
+        try {
+          await acceptPendingInvitationsForUser(user.id, email);
+        } catch {
+          /* login still succeeds; invitations can be re-accepted next time */
         }
 
         return {

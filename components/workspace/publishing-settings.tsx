@@ -10,17 +10,24 @@ import { cn } from '@/lib/utils';
 
 interface Channel {
   id: string;
+  platform: string;
   username: string;
   profileName: string | null;
 }
 
 interface PublishingState {
   youtubeAccountId: string | null;
+  linkedinAccountId: string | null;
   hasWorkspaceKey: boolean;
   keyHint: string | null;
   channels: Channel[];
   channelError: string | null;
 }
+
+const PLATFORM_SECTIONS = [
+  { field: 'youtubeAccountId' as const, platform: 'youtube', label: '📺 YouTube channel' },
+  { field: 'linkedinAccountId' as const, platform: 'linkedin', label: '💼 LinkedIn profile (posts beta)' },
+];
 
 /** Settings → Publishing: wire the client's YouTube channel (via Zernio). */
 export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
@@ -43,7 +50,11 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
     void load();
   }, [load]);
 
-  async function save(patch: { apiKey?: string | null; youtubeAccountId?: string | null }) {
+  async function save(patch: {
+    apiKey?: string | null;
+    youtubeAccountId?: string | null;
+    linkedinAccountId?: string | null;
+  }) {
     setSaving(true);
     try {
       const r = await fetch(`/api/workspaces/${workspaceId}/publishing`, {
@@ -106,7 +117,9 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
                     size="sm"
                     variant="ghost"
                     disabled={saving}
-                    onClick={() => void save({ apiKey: null, youtubeAccountId: null })}
+                    onClick={() =>
+                      void save({ apiKey: null, youtubeAccountId: null, linkedinAccountId: null })
+                    }
                   >
                     Remove key
                   </Button>
@@ -114,65 +127,76 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <p className="text-sm font-medium">Channel</p>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  className="h-6 px-1.5"
-                  onClick={() => void load()}
-                >
-                  <RefreshCw className="h-3 w-3" />
-                </Button>
-              </div>
-              {!state.hasWorkspaceKey ? (
-                <p className="text-xs text-muted-foreground">
-                  Add this workspace&apos;s Zernio key first — channels are only ever listed from
-                  its own key.
-                </p>
-              ) : state.channelError ? (
-                <p className="text-xs text-destructive">{state.channelError}</p>
-              ) : state.channels.length === 0 ? (
-                <p className="text-xs text-muted-foreground">
-                  No YouTube channels found on this key — connect the client&apos;s channel in
-                  Zernio, then reload.
-                </p>
-              ) : (
-                <div className="space-y-1.5">
-                  {state.channels.map((c) => {
-                    const active = c.id === state.youtubeAccountId;
-                    return (
-                      <button
-                        key={c.id}
-                        disabled={saving}
-                        onClick={() => void save({ youtubeAccountId: active ? null : c.id })}
-                        className={cn(
-                          'w-full max-w-sm flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
-                          active
-                            ? 'border-primary/60 bg-primary/10'
-                            : 'hover:border-white/20 hover:bg-white/[0.03]'
-                        )}
+            {!state.hasWorkspaceKey ? (
+              <p className="text-xs text-muted-foreground">
+                Add this workspace&apos;s Zernio key first — accounts are only ever listed from
+                its own key.
+              </p>
+            ) : state.channelError ? (
+              <p className="text-xs text-destructive">{state.channelError}</p>
+            ) : (
+              PLATFORM_SECTIONS.map((section) => {
+                const options = state.channels.filter((c) => c.platform === section.platform);
+                const wired = state[section.field];
+                return (
+                  <div key={section.field} className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium">{section.label}</p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-1.5"
+                        onClick={() => void load()}
                       >
-                        <span
-                          className={cn(
-                            'h-2 w-2 rounded-full flex-none',
-                            active ? 'bg-primary' : 'bg-white/15'
-                          )}
-                        />
-                        <span className="font-medium truncate">{c.username}</span>
-                        {c.profileName && (
-                          <span className="text-xs text-muted-foreground truncate ml-auto">
-                            {c.profileName}
-                          </span>
-                        )}
-                        {active && <span className="text-xs text-primary flex-none">wired ✓</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                        <RefreshCw className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    {options.length === 0 ? (
+                      <p className="text-xs text-muted-foreground">
+                        Nothing connected on this key — connect it in Zernio, then reload.
+                      </p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {options.map((c) => {
+                          const active = c.id === wired;
+                          return (
+                            <button
+                              key={c.id}
+                              disabled={saving}
+                              onClick={() =>
+                                void save({ [section.field]: active ? null : c.id })
+                              }
+                              className={cn(
+                                'w-full max-w-sm flex items-center gap-3 rounded-lg border px-3 py-2 text-left text-sm transition-colors',
+                                active
+                                  ? 'border-primary/60 bg-primary/10'
+                                  : 'hover:border-white/20 hover:bg-white/[0.03]'
+                              )}
+                            >
+                              <span
+                                className={cn(
+                                  'h-2 w-2 rounded-full flex-none',
+                                  active ? 'bg-primary' : 'bg-white/15'
+                                )}
+                              />
+                              <span className="font-medium truncate">{c.username}</span>
+                              {c.profileName && (
+                                <span className="text-xs text-muted-foreground truncate ml-auto">
+                                  {c.profileName}
+                                </span>
+                              )}
+                              {active && (
+                                <span className="text-xs text-primary flex-none">wired ✓</span>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
             {saving && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
           </>
         )}

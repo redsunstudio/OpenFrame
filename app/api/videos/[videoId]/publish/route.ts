@@ -8,8 +8,10 @@ import {
   PublishError,
   publishChecks,
   isWorkspacePublishReady,
+  isWorkspaceLinkedInReady,
   type PublishMode,
 } from '@/lib/publish-video';
+import { publishPostToLinkedIn } from '@/lib/publish-post';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
@@ -47,6 +49,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return withCacheControl(
       successResponse({
         configured: isWorkspacePublishReady(ctx.workspace.publishing),
+        configuredLinkedIn: isWorkspaceLinkedInReady(ctx.workspace.publishing),
         canPublish: ctx.access.canEdit,
         checks: publishChecks(ctx.video),
       }),
@@ -72,6 +75,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!ctx.access.canEdit) return apiErrors.forbidden('Only workspace admins can publish');
 
     const body = await request.json().catch(() => null);
+
+    // BETA: written POST items go to LinkedIn, everything else to YouTube.
+    if (ctx.video.videoType === 'POST') {
+      const result = await publishPostToLinkedIn(videoId, {
+        mode: body?.mode === 'live' ? 'live' : 'draft',
+        scheduledFor: typeof body?.scheduledFor === 'string' ? body.scheduledFor : undefined,
+        actorName: session.user.name ?? undefined,
+      });
+      return withCacheControl(successResponse(result), 'private, no-store');
+    }
+
     const mode: PublishMode = ['studio', 'draft', 'live'].includes(body?.mode)
       ? body.mode
       : body?.publishNow === true // back-compat with the first rail

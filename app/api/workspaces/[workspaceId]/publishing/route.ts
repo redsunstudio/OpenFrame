@@ -34,15 +34,21 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (!ctx.access.canEdit) return apiErrors.forbidden('Workspace admins only');
 
     const cfg = workspaceZernioConfig(ctx.workspace.publishing);
-    let channels: { id: string; username: string; profileName: string | null }[] = [];
+    let channels: { id: string; platform: string; username: string; profileName: string | null }[] =
+      [];
     let channelError: string | null = null;
     if (cfg.apiKey) {
       // Channels are ONLY ever listed with this workspace's own key — a
       // workspace can never see (or be wired to) another client's channels.
       try {
         channels = (await zernioListAccounts(cfg.apiKey))
-          .filter((a) => a.platform === 'youtube')
-          .map(({ id, username, profileName }) => ({ id, username, profileName }));
+          .filter((a) => ['youtube', 'linkedin'].includes(a.platform))
+          .map(({ id, platform, username, profileName }) => ({
+            id,
+            platform,
+            username,
+            profileName,
+          }));
       } catch (e) {
         channelError = e instanceof Error ? e.message.slice(0, 200) : 'could not reach Zernio';
       }
@@ -50,6 +56,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return withCacheControl(
       successResponse({
         youtubeAccountId: cfg.youtubeAccountId,
+        linkedinAccountId: cfg.linkedinAccountId,
         hasWorkspaceKey: Boolean(cfg.apiKey),
         keyHint: cfg.apiKey ? `····${cfg.apiKey.slice(-4)}` : null,
         channels,
@@ -81,7 +88,11 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
 
     const cfg = workspaceZernioConfig(ctx.workspace.publishing);
     let apiKey = cfg.apiKey ?? null;
-    let youtubeAccountId = cfg.youtubeAccountId;
+    const accounts: Record<'youtubeAccountId' | 'linkedinAccountId', string | null> = {
+      youtubeAccountId: cfg.youtubeAccountId,
+      linkedinAccountId: cfg.linkedinAccountId,
+    };
+    const platformOf = { youtubeAccountId: 'youtube', linkedinAccountId: 'linkedin' } as const;
 
     if ('apiKey' in body) {
       if (body.apiKey !== null && typeof body.apiKey !== 'string') {
@@ -92,44 +103,53 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
         return apiErrors.badRequest('that does not look like a Zernio API key (sk_…)');
       }
     }
-    if ('youtubeAccountId' in body) {
-      if (body.youtubeAccountId !== null && typeof body.youtubeAccountId !== 'string') {
-        return apiErrors.badRequest('youtubeAccountId must be a string or null');
-      }
-      youtubeAccountId = body.youtubeAccountId ? String(body.youtubeAccountId).trim() : null;
-      if (youtubeAccountId && !/^[a-f0-9]{24}$/.test(youtubeAccountId)) {
-        return apiErrors.badRequest('youtubeAccountId must be a Zernio account id');
+    for (const field of ['youtubeAccountId', 'linkedinAccountId'] as const) {
+      if (field in body) {
+        const raw = (body as Record<string, unknown>)[field];
+        if (raw !== null && typeof raw !== 'string') {
+          return apiErrors.badRequest(`${field} must be a string or null`);
+        }
+        accounts[field] = raw ? String(raw).trim() : null;
+        if (accounts[field] && !/^[a-f0-9]{24}$/.test(accounts[field]!)) {
+          return apiErrors.badRequest(`${field} must be a Zernio account id`);
+        }
       }
     }
 
-    // Isolation rules: no key -> nothing wired; a channel can only be wired if
+    // Isolation rules: no key -> nothing wired; an account can only be wired if
     // it's visible to THIS workspace's own key (cross-client wiring impossible).
-    // Changing the key silently drops a carried-over channel the new key can't see.
+    // Changing the key silently drops carried-over accounts the new key can't see.
     if (!apiKey) {
-      youtubeAccountId = null;
-    } else if (youtubeAccountId) {
-      let visibleIds: string[] | null = null;
+      accounts.youtubeAccountId = null;
+      accounts.linkedinAccountId = null;
+    } else if (accounts.youtubeAccountId || accounts.linkedinAccountId) {
+      let visible: { id: string; platform: string }[] | null = null;
       try {
-        visibleIds = (await zernioListAccounts(apiKey))
-          .filter((a) => a.platform === 'youtube')
-          .map((a) => a.id);
+        visible = await zernioListAccounts(apiKey);
       } catch {
         if ('apiKey' in body) {
           return apiErrors.badRequest('The Zernio key was rejected — check it and try again');
         }
-        return apiErrors.badRequest('Could not verify the channel against the Zernio key');
+        return apiErrors.badRequest('Could not verify the account against the Zernio key');
       }
-      if (!visibleIds.includes(youtubeAccountId)) {
-        if ('youtubeAccountId' in body) {
-          return apiErrors.badRequest("That channel isn't visible to this workspace's Zernio key");
+      for (const field of ['youtubeAccountId', 'linkedinAccountId'] as const) {
+        const id = accounts[field];
+        if (!id) continue;
+        if (!visible.some((a) => a.id === id && a.platform === platformOf[field])) {
+          if (field in body) {
+            return apiErrors.badRequest(
+              "That account isn't visible to this workspace's Zernio key"
+            );
+          }
+          accounts[field] = null; // stale account from a previous key — unwire it
         }
-        youtubeAccountId = null; // stale channel from a previous key — unwire it
       }
     }
 
     const zernio: Record<string, string> = {};
     if (apiKey) zernio.apiKey = apiKey;
-    if (youtubeAccountId) zernio.youtubeAccountId = youtubeAccountId;
+    if (accounts.youtubeAccountId) zernio.youtubeAccountId = accounts.youtubeAccountId;
+    if (accounts.linkedinAccountId) zernio.linkedinAccountId = accounts.linkedinAccountId;
     await db.workspace.update({
       where: { id: workspaceId },
       data: {
@@ -138,7 +158,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
     });
     return withCacheControl(
       successResponse({
-        youtubeAccountId,
+        youtubeAccountId: accounts.youtubeAccountId,
+        linkedinAccountId: accounts.linkedinAccountId,
         hasWorkspaceKey: Boolean(apiKey),
         keyHint: apiKey ? `····${apiKey.slice(-4)}` : null,
       }),

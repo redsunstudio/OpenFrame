@@ -32,9 +32,11 @@ function scopeLabel(scope: InvitationScope): string {
 }
 
 export function buildInvitationUrl(token: string): string {
+  // Straight to the passwordless login: email -> code -> in. Pending
+  // invitations are accepted automatically on the first sign-in.
   const baseUrl = process.env.NEXTAUTH_URL || 'http://localhost:3000';
-  const url = new URL('/invitations/accept', baseUrl);
-  url.searchParams.set('token', token);
+  const url = new URL('/login', baseUrl);
+  url.searchParams.set('invite', token);
   return url.toString();
 }
 
@@ -83,8 +85,8 @@ function invitationEmailTemplate(input: {
           ${emailRow('Role', escapeHtml(input.role))}
           ${emailRow('Expires', `${INVITATION_TTL_DAYS} days`)}
         </table>
-        ${emailHighlight('Create an account (or sign in with this email) to accept this invitation.')}
-        ${emailButton('Accept Invitation &#8594;', input.invitationUrl)}
+        ${emailHighlight('Open the link, enter this email address and we&#39;ll send you a sign-in code — no password needed.')}
+        ${emailButton('Open your workspace &#8594;', input.invitationUrl)}
       </td></tr>
     `,
     {

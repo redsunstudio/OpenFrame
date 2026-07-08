@@ -92,6 +92,7 @@ interface PipelineBoardProps {
   workspaceId?: string;
   videos: PipelineVideo[];
   canEdit: boolean;
+  allowPosts?: boolean; // BETA: offer the 📝 Post type in the create dialog
 }
 
 function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
@@ -132,7 +133,13 @@ function StagePill({ status }: { status: string }) {
   );
 }
 
-export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: PipelineBoardProps) {
+export function PipelineBoard({
+  projectId,
+  workspaceId,
+  videos,
+  canEdit,
+  allowPosts,
+}: PipelineBoardProps) {
   const router = useRouter();
   const [items, setItems] = useState<PipelineVideo[]>(videos);
   const [view, setView] = useState<'list' | 'board'>('list');
@@ -479,7 +486,7 @@ export function PipelineBoard({ projectId, workspaceId, videos, canEdit }: Pipel
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {VIDEO_TYPES.map((t) => (
+                {VIDEO_TYPES.filter((t) => t.key !== 'POST' || allowPosts).map((t) => (
                   <SelectItem key={t.key} value={t.key}>
                     {t.emoji} {t.label}
                   </SelectItem>

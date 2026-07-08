@@ -7,6 +7,7 @@ import { db } from '@/lib/db';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import { isDirectFileUploadEnabled, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 import { ModuleNav } from '@/components/workspace/module-nav';
+import { hasModule } from '@/lib/workspace-features';
 import { PipelineBoard } from '@/components/pipeline-board';
 import { CoverButton } from '@/components/workspace/cover-button';
 
@@ -190,7 +191,12 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
 
       <ModuleNav workspace={workspace} active="review" />
 
-      <PipelineBoard workspaceId={workspaceId} videos={pipelineItems} canEdit={isAdmin} />
+      <PipelineBoard
+        workspaceId={workspaceId}
+        videos={pipelineItems}
+        canEdit={isAdmin}
+        allowPosts={hasModule(workspace, 'posts')}
+      />
 
       <div className="mt-2">
         <Link

@@ -7,7 +7,14 @@
  * and are switched on per client.
  */
 
-export const KREATORKIT_MODULES = ['review', 'handoff', 'published', 'assets', 'reports'] as const;
+export const KREATORKIT_MODULES = [
+  'review',
+  'handoff',
+  'published',
+  'assets',
+  'reports',
+  'posts', // BETA: written social post items (LinkedIn) — no nav tab, gates the 📝 type
+] as const;
 export type KreatorKitModule = (typeof KREATORKIT_MODULES)[number];
 
 const MODULE_DEFAULTS: Record<KreatorKitModule, boolean> = {
@@ -16,6 +23,7 @@ const MODULE_DEFAULTS: Record<KreatorKitModule, boolean> = {
   published: true,
   assets: true,
   reports: false,
+  posts: false,
 };
 
 export function normalizeFeatures(raw: unknown): Record<KreatorKitModule, boolean> {

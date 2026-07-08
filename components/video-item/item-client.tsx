@@ -73,6 +73,8 @@ interface VideoItemClientProps {
   video: ItemVideo;
   canEdit: boolean;
   publishReady?: boolean;
+  linkedInReady?: boolean;
+  allowPosts?: boolean;
 }
 
 function fmtSize(b?: string | number | null): string {
@@ -94,6 +96,8 @@ export function VideoItemClient({
   video,
   canEdit,
   publishReady,
+  linkedInReady,
+  allowPosts,
 }: VideoItemClientProps) {
   const router = useRouter();
   const [status, setStatus] = useState(video.status);
@@ -114,6 +118,7 @@ export function VideoItemClient({
   const [movingStatus, setMovingStatus] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [publishing, setPublishing] = useState(false);
+  const [scheduleFor, setScheduleFor] = useState('');
   const [title, setTitle] = useState(video.title);
   const [titleDraft, setTitleDraft] = useState(video.title);
   const [editingTitle, setEditingTitle] = useState(false);
@@ -296,6 +301,42 @@ export function VideoItemClient({
       if (!r.ok) throw new Error(d?.error?.message || 'Push failed');
       toast.success('Pushed 📺 — it lands in YouTube Studio as a private draft');
       setPublishOpen(false);
+      await loadNotes();
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Push failed');
+    } finally {
+      setPublishing(false);
+    }
+  }
+
+  /** BETA: push a POST item to LinkedIn (draft / scheduled / live) via Zernio. */
+  async function pushToLinkedIn(mode: 'draft' | 'live') {
+    setPublishing(true);
+    try {
+      const r = await fetch(`/api/videos/${video.id}/publish`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          mode,
+          ...(mode === 'draft' && scheduleFor
+            ? { scheduledFor: new Date(scheduleFor).toISOString() }
+            : {}),
+        }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error?.message || 'Push failed');
+      const result = d.data;
+      if (result.mode === 'live') {
+        setStatus('PUBLISHED');
+        toast.success('Posted to LinkedIn 📝');
+      } else if (result.mode === 'scheduled') {
+        toast.success('Scheduled in Zernio — confirm any @tags there');
+      } else {
+        toast.success('Drafted in Zernio — confirm @tags, then schedule or post');
+      }
+      setPublishOpen(false);
+      setScheduleFor('');
       await loadNotes();
       router.refresh();
     } catch (e) {
@@ -572,6 +613,7 @@ export function VideoItemClient({
   }
 
   const archiveEligible = canEdit && ['ARCHIVED', 'REJECTED'].includes(status);
+  const isPost = videoType === 'POST';
 
   const activeVersion = video.versions.find((v) => v.isActive) ?? video.versions[0];
 
@@ -675,9 +717,14 @@ export function VideoItemClient({
 
       {/* Actions row */}
       <div className="flex flex-wrap items-center gap-2">
-        {canEdit && publishReady && video.versions.length > 0 && (
+        {canEdit && !isPost && publishReady && video.versions.length > 0 && (
           <Button size="sm" onClick={() => setPublishOpen(true)}>
             📺 Push to YouTube
+          </Button>
+        )}
+        {canEdit && isPost && linkedInReady && (
+          <Button size="sm" onClick={() => setPublishOpen(true)}>
+            💼 Push to LinkedIn
           </Button>
         )}
         <Select value={videoType} onValueChange={changeType} disabled={!canEdit}>
@@ -685,7 +732,7 @@ export function VideoItemClient({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            {VIDEO_TYPES.map((t) => (
+            {VIDEO_TYPES.filter((t) => t.key !== 'POST' || allowPosts || isPost).map((t) => (
               <SelectItem key={t.key} value={t.key}>
                 {t.emoji} {t.label}
               </SelectItem>
@@ -723,7 +770,8 @@ export function VideoItemClient({
         )}
       </div>
 
-      {/* Cuts: watch, review, upload new */}
+      {/* Cuts: watch, review, upload new (not for written posts) */}
+      {!isPost && (
       <Card>
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center justify-between">
@@ -788,6 +836,7 @@ export function VideoItemClient({
           ))}
         </CardContent>
       </Card>
+      )}
 
       {/* Brief + description */}
       <Card>
@@ -818,12 +867,16 @@ export function VideoItemClient({
           )}
 
           <div className="border-t pt-3">
-            <p className="text-sm font-medium mb-1">Description</p>
+            <p className="text-sm font-medium mb-1">{isPost ? 'Post copy' : 'Description'}</p>
             <Textarea
               value={description}
               onChange={(e) => onDescriptionChange(e.target.value)}
               onBlur={onDescriptionBlur}
-              placeholder="The YouTube description — written here, shipped with the video on publish…"
+              placeholder={
+                isPost
+                  ? 'The LinkedIn post — write it exactly as it should read, @tags included…'
+                  : 'The YouTube description — written here, shipped with the video on publish…'
+              }
               rows={5}
               maxLength={5000}
               disabled={!canEdit}
@@ -853,7 +906,7 @@ export function VideoItemClient({
           <CardTitle className="text-base flex items-center justify-between">
             <span className="flex items-center gap-2">
               <Inbox className="h-4 w-4" />
-              Footage handoff
+              {isPost ? 'Media' : 'Footage handoff'}
             </span>
             <span className="flex items-center gap-2">
               {assets.length > 0 && (
@@ -890,8 +943,9 @@ export function VideoItemClient({
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
-            Raw footage, stills, audio, PDFs, project files — anything the edit needs, stored on
-            this video. Up to 5GB per file.
+            {isPost
+              ? 'What goes out with the post: one video, up to 9 images (carousel), or a PDF (document post). Text-only is fine too.'
+              : 'Raw footage, stills, audio, PDFs, project files — anything the edit needs, stored on this video. Up to 5GB per file.'}
           </p>
           {uploads.map((u) => (
             <div key={u.name} className="text-xs text-muted-foreground flex items-center gap-2">
@@ -1025,6 +1079,101 @@ export function VideoItemClient({
       </AlertDialog>
 
       <AlertDialog open={publishOpen} onOpenChange={(o) => !publishing && setPublishOpen(o)}>
+        {isPost ? (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>💼 Push to LinkedIn</AlertDialogTitle>
+              <AlertDialogDescription>
+                The post copy goes out exactly as written. Media rides along automatically: one
+                video, up to 9 images as a carousel, or a PDF as a document post. @tags are
+                confirmed in the Zernio editor before it goes live.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+
+            <div className="space-y-4 text-sm">
+              <div className="flex items-start gap-2.5">
+                <span className="flex-none mt-0.5">{description.trim() ? '✅' : '❌'}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Post copy</p>
+                  {description.trim() ? (
+                    <p className="text-muted-foreground line-clamp-3 whitespace-pre-wrap">
+                      {description}
+                    </p>
+                  ) : (
+                    <Textarea
+                      value={description}
+                      onChange={(e) => onDescriptionChange(e.target.value)}
+                      onBlur={onDescriptionBlur}
+                      placeholder="Write the post here…"
+                      rows={4}
+                      maxLength={5000}
+                      className="mt-1.5 text-sm"
+                    />
+                  )}
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="flex-none mt-0.5">
+                  {assets.some((a) => a.kind === 'VIDEO')
+                    ? '🎥'
+                    : assets.some((a) => a.kind === 'IMAGE')
+                      ? '🖼️'
+                      : assets.some((a) => /\.pdf$/i.test(a.displayName))
+                        ? '📄'
+                        : '✍️'}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Media</p>
+                  <p className="text-muted-foreground">
+                    {assets.some((a) => a.kind === 'VIDEO')
+                      ? 'Video post'
+                      : assets.filter((a) => a.kind === 'IMAGE').length > 0
+                        ? `${Math.min(assets.filter((a) => a.kind === 'IMAGE').length, 9)} image${assets.filter((a) => a.kind === 'IMAGE').length === 1 ? '' : 's'}${assets.filter((a) => a.kind === 'IMAGE').length > 1 ? ' (carousel)' : ''}`
+                        : assets.some((a) => /\.pdf$/i.test(a.displayName))
+                          ? 'Document post (PDF)'
+                          : 'Text-only post'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-2.5">
+                <span className="flex-none mt-0.5">🗓️</span>
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium">Schedule (optional)</p>
+                  <input
+                    type="datetime-local"
+                    value={scheduleFor}
+                    onChange={(e) => setScheduleFor(e.target.value)}
+                    className="mt-1.5 rounded-md border bg-transparent px-2.5 py-1.5 text-sm [color-scheme:dark]"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Empty = parked as a Zernio draft to finish there.
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={publishing}>Cancel</AlertDialogCancel>
+              <Button
+                variant="outline"
+                onClick={() => void pushToLinkedIn('draft')}
+                disabled={publishing || !description.trim()}
+              >
+                {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📤 '}
+                {scheduleFor ? 'Schedule' : 'Draft in Zernio'}
+              </Button>
+              <Button
+                onClick={() => void pushToLinkedIn('live')}
+                disabled={publishing || !description.trim()}
+              >
+                {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '💼 '}
+                Post now
+              </Button>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        ) : (
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>📺 Push to YouTube</AlertDialogTitle>
@@ -1107,6 +1256,7 @@ export function VideoItemClient({
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>
+        )}
       </AlertDialog>
 
       <AlertDialog open={archiveOpen} onOpenChange={setArchiveOpen}>

@@ -109,7 +109,7 @@ export async function zernioUploadFromUrl(
 }
 
 export interface ZernioMediaItem {
-  type: 'video' | 'image';
+  type: 'video' | 'image' | 'document';
   url: string;
   thumbnail?: string;
 }

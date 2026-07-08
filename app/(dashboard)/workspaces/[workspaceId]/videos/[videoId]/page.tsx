@@ -3,7 +3,8 @@ import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { auth, checkWorkspaceAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { isWorkspacePublishReady } from '@/lib/publish-video';
+import { isWorkspaceLinkedInReady, isWorkspacePublishReady } from '@/lib/publish-video';
+import { hasModule } from '@/lib/workspace-features';
 import { VideoItemClient } from '@/components/video-item/item-client';
 
 interface ItemPageProps {
@@ -79,6 +80,8 @@ export default async function VideoItemPage({ params }: ItemPageProps) {
         }}
         canEdit={isAdmin || access.canEdit}
         publishReady={isWorkspacePublishReady(workspace.publishing)}
+        linkedInReady={isWorkspaceLinkedInReady(workspace.publishing)}
+        allowPosts={hasModule(workspace, 'posts')}
       />
     </div>
   );

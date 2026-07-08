@@ -1,11 +1,35 @@
 import Link from 'next/link';
 import { Video } from 'lucide-react';
+import { getValidInvitationByToken } from '@/lib/invitations';
+import { db } from '@/lib/db';
 import { LoginForm, LoginFormSkeleton } from './login-form';
 import { Suspense } from 'react';
 
-export default function LoginPage() {
+interface LoginPageProps {
+  searchParams: Promise<{ invite?: string }>;
+}
+
+export default async function LoginPage({ searchParams }: LoginPageProps) {
   const googleEnabled = Boolean(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
   const githubEnabled = Boolean(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_CLIENT_SECRET);
+
+  // Invited? Pre-fill their email and greet them by workspace.
+  const { invite } = await searchParams;
+  let inviteEmail: string | null = null;
+  let inviteTarget: string | null = null;
+  if (invite) {
+    const invitation = await getValidInvitationByToken(invite).catch(() => null);
+    if (invitation) {
+      inviteEmail = invitation.email;
+      if (invitation.workspaceId) {
+        const ws = await db.workspace.findUnique({
+          where: { id: invitation.workspaceId },
+          select: { name: true },
+        });
+        inviteTarget = ws?.name ?? null;
+      }
+    }
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4 bg-background">
@@ -17,7 +41,12 @@ export default function LoginPage() {
         </Link>
 
         <Suspense fallback={<LoginFormSkeleton />}>
-          <LoginForm googleEnabled={googleEnabled} githubEnabled={githubEnabled} />
+          <LoginForm
+            googleEnabled={googleEnabled}
+            githubEnabled={githubEnabled}
+            inviteEmail={inviteEmail}
+            inviteTarget={inviteTarget}
+          />
         </Suspense>
 
         <p className="text-center text-xs text-muted-foreground mt-4">

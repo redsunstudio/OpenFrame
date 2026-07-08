@@ -1,8 +1,10 @@
 // Client-safe metadata for the video type field (mirrors the VideoType enum).
+// POST is BETA — only offered in workspaces with the 'posts' feature flag.
 export const VIDEO_TYPES = [
   { key: 'PODCAST', label: 'Podcast', emoji: '🎙️' },
   { key: 'LONGFORM', label: 'Long form', emoji: '🎬' },
   { key: 'SHORT', label: 'Short', emoji: '📱' },
+  { key: 'POST', label: 'Post', emoji: '📝' },
 ] as const;
 
 export type VideoTypeKey = (typeof VIDEO_TYPES)[number]['key'];

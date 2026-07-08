@@ -33,20 +33,21 @@ export class PublishError extends Error {
 export interface ZernioWorkspaceConfig {
   apiKey?: string;
   youtubeAccountId: string | null;
+  linkedinAccountId: string | null;
 }
 
-/** Parse Workspace.publishing — { zernio: { apiKey?, youtubeAccountId? } }. */
+/** Parse Workspace.publishing — { zernio: { apiKey?, youtubeAccountId?, linkedinAccountId? } }. */
 export function workspaceZernioConfig(publishing: unknown): ZernioWorkspaceConfig {
-  if (!publishing || typeof publishing !== 'object') return { youtubeAccountId: null };
+  const empty = { youtubeAccountId: null, linkedinAccountId: null };
+  if (!publishing || typeof publishing !== 'object') return empty;
   const zernio = (publishing as Record<string, unknown>).zernio;
-  if (!zernio || typeof zernio !== 'object') return { youtubeAccountId: null };
+  if (!zernio || typeof zernio !== 'object') return empty;
   const cfg = zernio as Record<string, unknown>;
+  const str = (v: unknown) => (typeof v === 'string' && v ? v : null);
   return {
-    apiKey: typeof cfg.apiKey === 'string' && cfg.apiKey ? cfg.apiKey : undefined,
-    youtubeAccountId:
-      typeof cfg.youtubeAccountId === 'string' && cfg.youtubeAccountId
-        ? cfg.youtubeAccountId
-        : null,
+    apiKey: str(cfg.apiKey) ?? undefined,
+    youtubeAccountId: str(cfg.youtubeAccountId),
+    linkedinAccountId: str(cfg.linkedinAccountId),
   };
 }
 
@@ -58,6 +59,12 @@ export function workspaceYouTubeAccountId(publishing: unknown): string | null {
 export function isWorkspacePublishReady(publishing: unknown): boolean {
   const cfg = workspaceZernioConfig(publishing);
   return Boolean(cfg.youtubeAccountId && cfg.apiKey);
+}
+
+/** LinkedIn rail (BETA posts): the workspace's own key + a wired LinkedIn profile. */
+export function isWorkspaceLinkedInReady(publishing: unknown): boolean {
+  const cfg = workspaceZernioConfig(publishing);
+  return Boolean(cfg.linkedinAccountId && cfg.apiKey);
 }
 
 export interface PublishChecks {

@@ -3,9 +3,9 @@ import { MonitorPlay, Inbox, Palette, BarChart3, Youtube } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { hasModule, KREATORKIT_MODULES, type KreatorKitModule } from '@/lib/workspace-features';
 
-const MODULE_META: Record<
-  KreatorKitModule,
-  { label: string; href: (id: string) => string; icon: typeof MonitorPlay }
+// Modules without an entry here (e.g. 'posts') are capabilities, not tabs.
+const MODULE_META: Partial<
+  Record<KreatorKitModule, { label: string; href: (id: string) => string; icon: typeof MonitorPlay }>
 > = {
   review: { label: 'Pipeline', href: (id) => `/workspaces/${id}`, icon: MonitorPlay },
   handoff: { label: 'Footage Handoff', href: (id) => `/workspaces/${id}/handoff`, icon: Inbox },
@@ -21,13 +21,13 @@ interface ModuleNavProps {
 
 /** KreatorKit module tab bar — one tab per enabled module for this client. */
 export function ModuleNav({ workspace, active }: ModuleNavProps) {
-  const enabled = KREATORKIT_MODULES.filter((m) => hasModule(workspace, m));
+  const enabled = KREATORKIT_MODULES.filter((m) => MODULE_META[m] && hasModule(workspace, m));
   if (enabled.length <= 1) return null;
 
   return (
     <nav className="mb-8 flex items-center gap-1 border-b">
       {enabled.map((m) => {
-        const meta = MODULE_META[m];
+        const meta = MODULE_META[m]!;
         const Icon = meta.icon;
         const isActive = m === active;
         return (

@@ -120,11 +120,13 @@ enum VideoStatus {
 }
 
 // What kind of deliverable this item is — drives publish defaults
-// (SHORT = vertical YouTube Short; PODCAST/LONGFORM = regular upload).
+// (SHORT = vertical YouTube Short; PODCAST/LONGFORM = regular upload;
+// POST = written social post, LinkedIn first — BETA, per-workspace flag).
 enum VideoType {
   PODCAST
   LONGFORM
   SHORT
+  POST
 }
 
 model DownloadEgressEvent {
@@ -397,6 +399,19 @@ model Video {
   @@index([projectId])
   @@index([status])
   @@map("videos")
+}
+
+// One-time email sign-in codes (passwordless login for invited members)
+model LoginCode {
+  id        String   @id @default(cuid())
+  email     String
+  codeHash  String
+  expiresAt DateTime
+  attempts  Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([email])
+  @@map("login_codes")
 }
 
 model WorkspaceAsset {
