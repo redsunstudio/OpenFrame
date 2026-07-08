@@ -123,7 +123,9 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       _count: { select: { versions: true } },
     },
   });
-  const pipelineItems = workspaceVideos.map((v) => ({
+  const activeVideos = workspaceVideos.filter((v) => v.status !== 'ARCHIVED');
+  const archivedCount = workspaceVideos.length - activeVideos.length;
+  const pipelineItems = activeVideos.map((v) => ({
     id: v.id,
     title: v.title,
     status: v.status,
@@ -218,6 +220,15 @@ export default async function WorkspacePage({ params, searchParams }: WorkspaceP
       <ModuleNav workspace={workspace} active="review" />
 
       <PipelineBoard workspaceId={workspaceId} videos={pipelineItems} canEdit={isAdmin} />
+
+      <div className="mt-2">
+        <Link
+          href={`/workspaces/${workspaceId}/archive`}
+          className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+        >
+          📦 Archive ({archivedCount})
+        </Link>
+      </div>
 
     </div>
   );
