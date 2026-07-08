@@ -103,6 +103,11 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
   const [archiving, setArchiving] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [notes, setNotes] = useState<
+    { id: string; body: string; createdAt: string; author?: { name: string | null } | null }[]
+  >([]);
+  const [noteDraft, setNoteDraft] = useState('');
+  const [postingNote, setPostingNote] = useState(false);
   const footageInput = useRef<HTMLInputElement>(null);
   const cutInput = useRef<HTMLInputElement>(null);
   const thumbInput = useRef<HTMLInputElement>(null);
@@ -119,9 +124,15 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     }
   }, [video.id]);
 
+  const loadNotes = useCallback(async () => {
+    const r = await fetch(`/api/videos/${video.id}/notes`);
+    if (r.ok) setNotes((await r.json()).data?.notes ?? []);
+  }, [video.id]);
+
   useEffect(() => {
     void loadAssets();
-  }, [loadAssets]);
+    void loadNotes();
+  }, [loadAssets, loadNotes]);
 
   const uploadsActive =
     uploads.some((u) => u.state === 'uploading') || uploadingCut !== null || uploadingThumb;
@@ -408,6 +419,26 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     }
   }
 
+  async function postNote() {
+    const body = noteDraft.trim();
+    if (!body) return;
+    setPostingNote(true);
+    try {
+      const r = await fetch(`/api/videos/${video.id}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ body }),
+      });
+      if (!r.ok) throw new Error((await r.json())?.error?.message || 'Could not post');
+      setNoteDraft('');
+      await loadNotes();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not post the note');
+    } finally {
+      setPostingNote(false);
+    }
+  }
+
   const archiveEligible = canEdit && ['ARCHIVED', 'REJECTED'].includes(status);
 
   const activeVersion = video.versions.find((v) => v.isActive) ?? video.versions[0];
@@ -526,10 +557,11 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
               value={brief}
               onChange={(e) => onBriefChange(e.target.value)}
               onBlur={onBriefBlur}
-              placeholder="The angle, the hook, references — anything the shoot or the edit needs to know. Saves as you type."
+              placeholder="The angle, the hook, references — anything the shoot or the edit needs to know…"
               rows={5}
               maxLength={5000}
               disabled={!canEdit}
+              className="border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0 focus-visible:border-0 text-[15px] leading-relaxed resize-none placeholder:text-muted-foreground/50"
             />
             {canEdit && (
               <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
@@ -669,6 +701,66 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
               ))}
             </div>
           )}
+        </CardContent>
+      </Card>
+
+
+      {/* Notes — item-level discussion (review comments live on the cuts) */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base flex items-center gap-2">💬 Notes</CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {notes.length === 0 ? (
+            <p className="text-xs text-muted-foreground">
+              Thoughts on the idea, references, direction — the conversation lives with the video.
+            </p>
+          ) : (
+            <div className="space-y-4">
+              {notes.map((n) => (
+                <div key={n.id} className="flex gap-3">
+                  <div className="h-7 w-7 rounded-full bg-primary/15 text-primary flex items-center justify-center text-xs font-semibold flex-none mt-0.5">
+                    {(n.author?.name || '?').slice(0, 1).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-sm font-medium">{n.author?.name || 'Someone'}</span>
+                      <span className="text-[11px] text-muted-foreground font-mono">
+                        {new Date(n.createdAt).toLocaleString('en-GB', {
+                          day: 'numeric',
+                          month: 'short',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })}
+                      </span>
+                    </div>
+                    <p className="text-sm text-foreground/90 whitespace-pre-wrap mt-0.5">{n.body}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 pt-1">
+            <Textarea
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) void postNote();
+              }}
+              placeholder="Add a note… (⌘↵ to post)"
+              rows={2}
+              maxLength={4000}
+              className="text-sm"
+            />
+            <Button
+              size="sm"
+              className="self-end"
+              onClick={postNote}
+              disabled={postingNote || !noteDraft.trim()}
+            >
+              {postingNote ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Post'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 

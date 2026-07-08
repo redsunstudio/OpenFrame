@@ -52,6 +52,7 @@ model User {
   sentInvitations           Invitation[] @relation("InvitationsSentBy")
   
   @@map("users")
+  videoNotes VideoNote[] @relation("VideoNoteAuthor")
 }
 
 enum BillingSubscriptionStatus {
@@ -371,10 +372,24 @@ model Video {
   versions    VideoVersion[]
   assets      VideoAsset[]
   shareLinks  ShareLink[]
+  notes       VideoNote[]
   
   @@index([projectId])
   @@index([status])
   @@map("videos")
+}
+
+model VideoNote {
+  id         String   @id @default(cuid())
+  videoId    String
+  video      Video    @relation(fields: [videoId], references: [id], onDelete: Cascade)
+  authorId   String?
+  author     User?    @relation("VideoNoteAuthor", fields: [authorId], references: [id], onDelete: SetNull)
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([videoId])
+  @@map("video_notes")
 }
 
 model VideoVersion {
