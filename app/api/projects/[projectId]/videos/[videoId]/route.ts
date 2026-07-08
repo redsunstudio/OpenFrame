@@ -1,3 +1,4 @@
+import { VideoStatus } from '@prisma/client';
 import { NextRequest } from 'next/server';
 import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
@@ -190,7 +191,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       return apiErrors.badRequest('position must be a non-negative integer');
     }
 
-    const VIDEO_STATUSES = ['IDEA', 'FILMED', 'EDITING', 'REVIEW', 'APPROVED', 'PUBLISHED'];
+    const VIDEO_STATUSES = Object.values(VideoStatus);
     if (status !== undefined && !VIDEO_STATUSES.includes(status)) {
       return apiErrors.badRequest('status must be one of ' + VIDEO_STATUSES.join(', '));
     }
