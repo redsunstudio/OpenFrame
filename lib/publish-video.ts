@@ -11,7 +11,7 @@
 
 import { db } from '@/lib/db';
 import { createPresignedFileGetUrl, createPresignedVideoGetUrl } from '@/lib/r2';
-import { isZernioConfigured, zernioCreatePost, zernioUploadFromUrl } from '@/lib/zernio';
+import { zernioCreatePost, zernioListAccounts, zernioUploadFromUrl } from '@/lib/zernio';
 import type { ZernioMediaItem } from '@/lib/zernio';
 
 export type PublishMode = 'studio' | 'draft' | 'live';
@@ -49,10 +49,10 @@ export function workspaceYouTubeAccountId(publishing: unknown): string | null {
   return workspaceZernioConfig(publishing).youtubeAccountId;
 }
 
-/** Does this workspace have a usable publish rail (channel + some key)? */
+/** Usable publish rail = the workspace's OWN key + a wired channel. No shared key. */
 export function isWorkspacePublishReady(publishing: unknown): boolean {
   const cfg = workspaceZernioConfig(publishing);
-  return Boolean(cfg.youtubeAccountId && (cfg.apiKey || isZernioConfigured()));
+  return Boolean(cfg.youtubeAccountId && cfg.apiKey);
 }
 
 export interface PublishChecks {
@@ -107,15 +107,16 @@ export async function publishVideoToYouTube(
   if (!video) throw new PublishError('Video not found', 404);
 
   const cfg = workspaceZernioConfig(video.project.workspace.publishing);
-  if (!cfg.apiKey && !isZernioConfigured()) {
+  const apiKey = cfg.apiKey;
+  if (!apiKey) {
     throw new PublishError(
-      'Publishing is not configured (no Zernio API key on the server or this workspace)',
+      'This workspace has no Zernio API key — add its own key in Settings → YouTube publishing',
       503
     );
   }
   if (!cfg.youtubeAccountId) {
     throw new PublishError(
-      'No YouTube channel is wired to this workspace yet — set it in Settings → Publishing'
+      'No YouTube channel is wired to this workspace yet — set it in Settings → YouTube publishing'
     );
   }
 
@@ -133,6 +134,21 @@ export async function publishVideoToYouTube(
     }
   }
 
+  // Isolation guard: the wired channel must be visible to THIS workspace's own
+  // key. A stale or mis-wired accountId can never post to another client's page.
+  const visible = await zernioListAccounts(apiKey).catch(() => null);
+  if (!visible) {
+    throw new PublishError(
+      "This workspace's Zernio key was rejected — re-check it in Settings → YouTube publishing"
+    );
+  }
+  const channel = visible.find((a) => a.id === cfg.youtubeAccountId && a.platform === 'youtube');
+  if (!channel) {
+    throw new PublishError(
+      "The wired YouTube channel isn't visible to this workspace's Zernio key — re-pick the channel in Settings → YouTube publishing"
+    );
+  }
+
   const cut = video.versions[0];
   const safeName = video.title.replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'video';
   const sourceUrl = await createPresignedVideoGetUrl(cut.videoId, `${safeName}.mp4`, 6 * 3600);
@@ -141,7 +157,7 @@ export async function publishVideoToYouTube(
     `${safeName}.mp4`,
     'video/mp4',
     cut.sizeBytes ? Number(cut.sizeBytes) : undefined,
-    cfg.apiKey
+    apiKey
   );
 
   // Best-effort thumbnail copy (item thumbnails are stored as R2_FILE assets).
@@ -163,7 +179,7 @@ export async function publishVideoToYouTube(
           asset.displayName,
           guessImageContentType(asset.displayName),
           asset.sizeBytes ? Number(asset.sizeBytes) : undefined,
-          cfg.apiKey
+          apiKey
         );
       }
     } catch {
@@ -191,7 +207,7 @@ export async function publishVideoToYouTube(
       ],
       ...(mode === 'draft' ? { isDraft: true } : { publishNow: true }),
     },
-    cfg.apiKey
+    apiKey
   );
 
   const by = opts.actorName ? ` — by ${opts.actorName}` : '';

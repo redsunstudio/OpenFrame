@@ -1,6 +1,8 @@
 // Zernio (Late) REST client — the publish rail out of KreatorKit.
-// Auth: workspace-level key override, falling back to the ZERNIO_API_KEY env
-// (one agency-wide key; per-client channels live on Zernio profiles).
+// Auth: EVERY call needs the calling workspace's own API key. There is
+// deliberately NO shared/agency fallback — a workspace can only ever see and
+// post to the channels its own key exposes (cross-client posting is
+// structurally impossible).
 // Media flow: presign -> PUT bytes -> use publicUrl.
 
 const ZERNIO_BASE = 'https://zernio.com/api/v1';
@@ -10,17 +12,13 @@ const ZERNIO_BASE = 'https://zernio.com/api/v1';
 // the presigned PUT, so it is the default path for typical cuts.
 const BUFFER_LIMIT_BYTES = 256 * 1024 * 1024;
 
-export function isZernioConfigured(): boolean {
-  return Boolean(process.env.ZERNIO_API_KEY);
-}
-
 async function zernioFetch(
   path: string,
-  init?: RequestInit,
-  apiKey?: string
+  init: RequestInit | undefined,
+  apiKey: string
 ): Promise<Record<string, unknown>> {
-  const key = apiKey || process.env.ZERNIO_API_KEY;
-  if (!key) throw new Error('no Zernio API key available');
+  const key = apiKey;
+  if (!key) throw new Error('no Zernio API key for this workspace');
   const res = await fetch(`${ZERNIO_BASE}${path}`, {
     ...init,
     headers: {
@@ -50,7 +48,7 @@ export interface ZernioChannel {
 }
 
 /** Connected accounts on the Zernio workspace this key belongs to. */
-export async function zernioListAccounts(apiKey?: string): Promise<ZernioChannel[]> {
+export async function zernioListAccounts(apiKey: string): Promise<ZernioChannel[]> {
   const raw = await zernioFetch('/accounts', undefined, apiKey);
   const list = (Array.isArray(raw) ? raw : (raw.accounts ?? raw.data ?? [])) as Record<
     string,
@@ -75,8 +73,8 @@ export async function zernioUploadFromUrl(
   sourceUrl: string,
   filename: string,
   contentType: string,
-  sizeBytes?: number,
-  apiKey?: string
+  sizeBytes: number | undefined,
+  apiKey: string
 ): Promise<string> {
   const presign = await zernioFetch(
     '/media/presign',
@@ -130,7 +128,7 @@ export async function zernioCreatePost(
     isDraft?: boolean;
     publishNow?: boolean;
   },
-  apiKey?: string
+  apiKey: string
 ): Promise<{ postId: string | null; raw: Record<string, unknown> }> {
   const raw = await zernioFetch(
     '/posts',

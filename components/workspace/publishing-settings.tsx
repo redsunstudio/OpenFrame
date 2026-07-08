@@ -18,7 +18,6 @@ interface PublishingState {
   youtubeAccountId: string | null;
   hasWorkspaceKey: boolean;
   keyHint: string | null;
-  agencyKeyAvailable: boolean;
   channels: Channel[];
   channelError: string | null;
 }
@@ -68,8 +67,10 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
       <CardHeader>
         <CardTitle className="flex items-center gap-2">📺 YouTube publishing</CardTitle>
         <CardDescription>
-          Wire this workspace to a YouTube channel connected in Zernio. &quot;Push to YouTube&quot;
-          on a video then lands it in that channel&apos;s YouTube Studio as a private draft.
+          Each workspace has its OWN Zernio API key — it can only ever see and post to the channels
+          on that key, so one client&apos;s videos can never reach another client&apos;s page.
+          &quot;Push to YouTube&quot; lands videos in the wired channel&apos;s YouTube Studio as a
+          private draft.
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -78,18 +79,16 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
         ) : (
           <>
             <div className="space-y-2">
-              <p className="text-sm font-medium">Zernio API key</p>
+              <p className="text-sm font-medium">This workspace&apos;s Zernio API key</p>
               <p className="text-xs text-muted-foreground">
                 {state.hasWorkspaceKey
-                  ? `This workspace uses its own key (${state.keyHint}).`
-                  : state.agencyKeyAvailable
-                    ? 'Using the agency key — only set a key here if this client runs their own Zernio account.'
-                    : 'No key available — paste a Zernio API key to enable publishing.'}
+                  ? `Key set (${state.keyHint}).`
+                  : 'No key yet — publishing stays off until this workspace gets its own key.'}
               </p>
               <div className="flex gap-2">
                 <Input
                   type="password"
-                  placeholder="sk_… (optional override)"
+                  placeholder="sk_…"
                   value={keyDraft}
                   onChange={(e) => setKeyDraft(e.target.value)}
                   className="max-w-sm"
@@ -107,9 +106,9 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
                     size="sm"
                     variant="ghost"
                     disabled={saving}
-                    onClick={() => void save({ apiKey: null })}
+                    onClick={() => void save({ apiKey: null, youtubeAccountId: null })}
                   >
-                    Use agency key
+                    Remove key
                   </Button>
                 )}
               </div>
@@ -127,12 +126,17 @@ export function PublishingSettings({ workspaceId }: { workspaceId: string }) {
                   <RefreshCw className="h-3 w-3" />
                 </Button>
               </div>
-              {state.channelError ? (
+              {!state.hasWorkspaceKey ? (
+                <p className="text-xs text-muted-foreground">
+                  Add this workspace&apos;s Zernio key first — channels are only ever listed from
+                  its own key.
+                </p>
+              ) : state.channelError ? (
                 <p className="text-xs text-destructive">{state.channelError}</p>
               ) : state.channels.length === 0 ? (
                 <p className="text-xs text-muted-foreground">
-                  No YouTube channels found — connect the client&apos;s channel in Zernio, then
-                  reload.
+                  No YouTube channels found on this key — connect the client&apos;s channel in
+                  Zernio, then reload.
                 </p>
               ) : (
                 <div className="space-y-1.5">

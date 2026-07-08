@@ -5,7 +5,7 @@ import { db } from '@/lib/db';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { rateLimit } from '@/lib/rate-limit';
 import { workspaceZernioConfig } from '@/lib/publish-video';
-import { isZernioConfigured, zernioListAccounts } from '@/lib/zernio';
+import { zernioListAccounts } from '@/lib/zernio';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
@@ -36,7 +36,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const cfg = workspaceZernioConfig(ctx.workspace.publishing);
     let channels: { id: string; username: string; profileName: string | null }[] = [];
     let channelError: string | null = null;
-    if (cfg.apiKey || isZernioConfigured()) {
+    if (cfg.apiKey) {
+      // Channels are ONLY ever listed with this workspace's own key — a
+      // workspace can never see (or be wired to) another client's channels.
       try {
         channels = (await zernioListAccounts(cfg.apiKey))
           .filter((a) => a.platform === 'youtube')
@@ -50,7 +52,6 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         youtubeAccountId: cfg.youtubeAccountId,
         hasWorkspaceKey: Boolean(cfg.apiKey),
         keyHint: cfg.apiKey ? `····${cfg.apiKey.slice(-4)}` : null,
-        agencyKeyAvailable: isZernioConfigured(),
         channels,
         channelError,
       }),
@@ -98,6 +99,31 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
       youtubeAccountId = body.youtubeAccountId ? String(body.youtubeAccountId).trim() : null;
       if (youtubeAccountId && !/^[a-f0-9]{24}$/.test(youtubeAccountId)) {
         return apiErrors.badRequest('youtubeAccountId must be a Zernio account id');
+      }
+    }
+
+    // Isolation rules: no key -> nothing wired; a channel can only be wired if
+    // it's visible to THIS workspace's own key (cross-client wiring impossible).
+    // Changing the key silently drops a carried-over channel the new key can't see.
+    if (!apiKey) {
+      youtubeAccountId = null;
+    } else if (youtubeAccountId) {
+      let visibleIds: string[] | null = null;
+      try {
+        visibleIds = (await zernioListAccounts(apiKey))
+          .filter((a) => a.platform === 'youtube')
+          .map((a) => a.id);
+      } catch {
+        if ('apiKey' in body) {
+          return apiErrors.badRequest('The Zernio key was rejected — check it and try again');
+        }
+        return apiErrors.badRequest('Could not verify the channel against the Zernio key');
+      }
+      if (!visibleIds.includes(youtubeAccountId)) {
+        if ('youtubeAccountId' in body) {
+          return apiErrors.badRequest("That channel isn't visible to this workspace's Zernio key");
+        }
+        youtubeAccountId = null; // stale channel from a previous key — unwire it
       }
     }
 
