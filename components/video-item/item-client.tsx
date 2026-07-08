@@ -12,6 +12,7 @@ import {
   Loader2,
   Music,
   Play,
+  Trash2,
   Upload,
   User as UserIcon,
 } from 'lucide-react';
@@ -134,6 +135,7 @@ export function VideoItemClient({
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [uploads, setUploads] = useState<{ name: string; pct: number; state: string }[]>([]);
   const [uploadingCut, setUploadingCut] = useState<string | null>(null);
+  const [deletingCut, setDeletingCut] = useState<string | null>(null);
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -556,6 +558,30 @@ export function VideoItemClient({
     }
   }
 
+  /** Delete a single cut — its file and review comments go with it. */
+  async function deleteCut(versionId: string, versionNumber: number) {
+    if (
+      !window.confirm(
+        `Delete cut v${versionNumber}? Its file and its review comments are removed. This can't be undone.`
+      )
+    )
+      return;
+    setDeletingCut(versionId);
+    try {
+      const r = await fetch(
+        `/api/projects/${video.projectId}/videos/${video.id}/versions/${versionId}`,
+        { method: 'DELETE' }
+      );
+      if (!r.ok) throw new Error((await r.json())?.error?.message || 'Could not delete the cut');
+      toast.success(`Cut v${versionNumber} deleted`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : 'Could not delete the cut');
+    } finally {
+      setDeletingCut(null);
+    }
+  }
+
   async function archiveVideo() {
     setArchiving(true);
     try {
@@ -952,6 +978,22 @@ export function VideoItemClient({
                     Watch & review
                   </Link>
                 </Button>
+                {canEdit && video.versions.length > 1 && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 px-2 text-muted-foreground hover:text-destructive"
+                    title={`Delete cut v${v.versionNumber}`}
+                    disabled={deletingCut === v.id}
+                    onClick={() => void deleteCut(v.id, v.versionNumber)}
+                  >
+                    {deletingCut === v.id ? (
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Trash2 className="h-3.5 w-3.5" />
+                    )}
+                  </Button>
+                )}
               </div>
             ))}
           </CardContent>
