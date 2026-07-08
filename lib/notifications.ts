@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import nodemailer from 'nodemailer';
+import { sendEmail as deliverEmail } from '@/lib/mailer';
 import {
   EMAIL_COLORS,
   brandedEmailTemplate,
@@ -60,21 +60,6 @@ async function sendTelegram(
  * Create a nodemailer SMTP transporter from environment variables.
  * Required env vars: SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASSWORD
  */
-function createSmtpTransport() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || '587');
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-
-  if (!host || !user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
-}
 
 /**
  * Send an email notification via SMTP.
@@ -82,22 +67,7 @@ function createSmtpTransport() {
  * Falls back to logging if not configured.
  */
 async function sendEmail(to: string, subject: string, html: string): Promise<boolean> {
-  const transporter = createSmtpTransport();
-  const fromAddress =
-    process.env.SMTP_FROM || process.env.EMAIL_FROM || 'KreatorKit <noreply@apps.johnisaacson.co.uk>';
-
-  if (!transporter) {
-    console.warn('SMTP not configured — skipping email notification');
-    return false;
-  }
-
-  try {
-    await transporter.sendMail({ from: fromAddress, to, subject, html });
-    return true;
-  } catch (err) {
-    logError('Email send failed:', err);
-    return false;
-  }
+  return deliverEmail({ to, subject, html });
 }
 
 // ============================================

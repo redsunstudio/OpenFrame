@@ -1,6 +1,6 @@
 import { createHash, randomBytes } from 'crypto';
 import { db } from '@/lib/db';
-import nodemailer from 'nodemailer';
+import { sendEmail, isEmailDeliveryConfigured } from '@/lib/mailer';
 import {
   brandedEmailTemplate,
   emailButton,
@@ -25,7 +25,9 @@ function hashToken(token: string): string {
  * without a mail server continue to function.
  */
 export function isEmailVerificationEnabled(): boolean {
-  return !!(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASSWORD);
+  // Verification gates on OPT-IN, not on delivery being available — otherwise
+  // enabling the Resend key would silently lock out new registrations.
+  return process.env.OPENFRAME_ENABLE_EMAIL_VERIFICATION === 'true' && isEmailDeliveryConfigured();
 }
 
 /**
@@ -85,18 +87,9 @@ export async function consumeVerificationToken(token: string): Promise<string | 
 // Email sending
 // ---------------------------------------------------------------------------
 
-function createTransport() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || '587');
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-  if (!host || !user || !pass) return null;
-  return nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass } });
-}
 
 export async function sendVerificationEmail(email: string, token: string): Promise<void> {
-  const transporter = createTransport();
-  if (!transporter) return;
+  if (!isEmailDeliveryConfigured()) return;
 
   const baseUrl = process.env.NEXTAUTH_URL;
   if (!baseUrl) {
@@ -110,8 +103,6 @@ export async function sendVerificationEmail(email: string, token: string): Promi
   }
 
   const verifyUrl = `${baseUrl}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
-  const from =
-    process.env.SMTP_FROM || process.env.EMAIL_FROM || 'KreatorKit <noreply@apps.johnisaacson.co.uk>';
 
   const html = brandedEmailTemplate(
     `
@@ -133,14 +124,10 @@ export async function sendVerificationEmail(email: string, token: string): Promi
     }
   );
 
-  try {
-    await transporter.sendMail({
-      from,
-      to: email,
-      subject: 'Verify your KreatorKit email address',
-      html,
-    });
-  } catch (err) {
-    logError('Failed to send verification email:', err);
-  }
+  const ok = await sendEmail({
+    to: email,
+    subject: 'Verify your KreatorKit email address',
+    html,
+  });
+  if (!ok) logError('Failed to send verification email:', new Error('mailer returned false'));
 }

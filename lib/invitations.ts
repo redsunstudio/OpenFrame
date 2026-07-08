@@ -1,5 +1,5 @@
 import { randomBytes } from 'crypto';
-import nodemailer from 'nodemailer';
+import { sendEmail, isEmailDeliveryConfigured } from '@/lib/mailer';
 import {
   InvitationRole,
   InvitationScope,
@@ -22,21 +22,6 @@ import { logError } from '@/lib/logger';
 const INVITATION_TTL_DAYS = 7;
 const MAX_INVITATION_RETRIES = 3;
 
-function createSmtpTransport() {
-  const host = process.env.SMTP_HOST;
-  const port = Number(process.env.SMTP_PORT || '587');
-  const user = process.env.SMTP_USER;
-  const pass = process.env.SMTP_PASSWORD;
-
-  if (!host || !user || !pass) return null;
-
-  return nodemailer.createTransport({
-    host,
-    port,
-    secure: port === 465,
-    auth: { user, pass },
-  });
-}
 
 function roleLabel(role: InvitationRole): string {
   return role === 'ADMIN' ? 'Admin' : 'Commentator';
@@ -61,14 +46,11 @@ export async function sendInvitationEmail(input: {
   targetName: string;
   invitationUrl: string;
 }): Promise<boolean> {
-  const transporter = createSmtpTransport();
-  if (!transporter) {
-    console.warn('SMTP not configured — skipping invitation email');
+  if (!isEmailDeliveryConfigured()) {
+    console.warn('Email delivery not configured — skipping invitation email');
     return false;
   }
 
-  const fromAddress =
-    process.env.SMTP_FROM || process.env.EMAIL_FROM || 'KreatorKit <noreply@apps.johnisaacson.co.uk>';
   const subject = `[KreatorKit] You were invited to a ${scopeLabel(input.scope)}: ${input.targetName}`;
   const html = invitationEmailTemplate({
     inviterName: input.inviterName,
@@ -78,18 +60,9 @@ export async function sendInvitationEmail(input: {
     invitationUrl: input.invitationUrl,
   });
 
-  try {
-    await transporter.sendMail({
-      from: fromAddress,
-      to: input.to,
-      subject,
-      html,
-    });
-    return true;
-  } catch (error) {
-    logError('Invitation email send failed:', error);
-    return false;
-  }
+  const sent = await sendEmail({ to: input.to, subject, html });
+  if (!sent) logError('Invitation email send failed:', new Error('mailer returned false'));
+  return sent;
 }
 
 function invitationEmailTemplate(input: {
