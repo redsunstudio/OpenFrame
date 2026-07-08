@@ -32,7 +32,7 @@ export interface PostPublishResult {
 
 export async function publishPostToLinkedIn(
   videoId: string,
-  opts: { mode?: PostPublishMode; scheduledFor?: string; actorName?: string } = {}
+  opts: { mode?: PostPublishMode; scheduledFor?: string; actorName?: string; force?: boolean } = {}
 ): Promise<PostPublishResult> {
   const video = await db.video.findUnique({
     where: { id: videoId },
@@ -60,6 +60,14 @@ export async function publishPostToLinkedIn(
 
   const copy = video.description?.trim();
   if (!copy) throw new PublishError('Not ready to post — write the post copy first');
+
+  // Double-post guard: this item already went to Zernio once. Drafts are
+  // harmless; anything that would hit the feed again needs an explicit force.
+  if (video.zernioPostId && opts.mode !== 'draft' && !opts.force) {
+    throw new PublishError(
+      `This post already went to Zernio (post ${video.zernioPostId}) — it may be live or queued. Pass force:true only if you really want a second post.`
+    );
+  }
 
   // The client reviews IN KreatorKit — nothing reaches Zernio or LinkedIn
   // until the item carries their sign-off.

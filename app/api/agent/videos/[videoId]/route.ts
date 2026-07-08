@@ -120,6 +120,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
     const updateData: Record<string, unknown> = {};
     if (status !== undefined) updateData.status = status;
     if (videoType !== undefined) updateData.videoType = videoType;
+    if (body?.zernioPostId !== undefined) {
+      if (body.zernioPostId !== null && !/^[a-f0-9]{24}$/.test(String(body.zernioPostId))) {
+        return apiErrors.badRequest('zernioPostId must be a Zernio post id or null');
+      }
+      updateData.zernioPostId = body.zernioPostId;
+      updateData.publishedUrl = null; // re-sync picks up the right URL
+      updateData.publishStatsAt = null;
+    }
     if (brief !== undefined)
       updateData.brief = brief === null ? null : String(brief).trim() || null;
     if (description !== undefined)

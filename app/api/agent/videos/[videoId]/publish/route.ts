@@ -24,6 +24,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       const result = await publishPostToLinkedIn(videoId, {
         mode: body?.mode === 'live' ? 'live' : body?.mode === 'queue' ? 'queue' : 'draft',
         scheduledFor: typeof body?.scheduledFor === 'string' ? body.scheduledFor : undefined,
+        force: body?.force === true,
         actorName: 'Agency OS',
       });
       return withCacheControl(successResponse(result), 'private, no-store');
