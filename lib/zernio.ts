@@ -1,5 +1,7 @@
 // Zernio (Late) REST client — the publish rail out of KreatorKit.
-// Auth: ZERNIO_API_KEY env (Bearer). Media flow: presign -> PUT bytes -> use publicUrl.
+// Auth: workspace-level key override, falling back to the ZERNIO_API_KEY env
+// (one agency-wide key; per-client channels live on Zernio profiles).
+// Media flow: presign -> PUT bytes -> use publicUrl.
 
 const ZERNIO_BASE = 'https://zernio.com/api/v1';
 
@@ -12,9 +14,13 @@ export function isZernioConfigured(): boolean {
   return Boolean(process.env.ZERNIO_API_KEY);
 }
 
-async function zernioFetch(path: string, init?: RequestInit): Promise<Record<string, unknown>> {
-  const key = process.env.ZERNIO_API_KEY;
-  if (!key) throw new Error('ZERNIO_API_KEY is not set');
+async function zernioFetch(
+  path: string,
+  init?: RequestInit,
+  apiKey?: string
+): Promise<Record<string, unknown>> {
+  const key = apiKey || process.env.ZERNIO_API_KEY;
+  if (!key) throw new Error('no Zernio API key available');
   const res = await fetch(`${ZERNIO_BASE}${path}`, {
     ...init,
     headers: {
@@ -36,17 +42,47 @@ async function zernioFetch(path: string, init?: RequestInit): Promise<Record<str
   return (data ?? {}) as Record<string, unknown>;
 }
 
+export interface ZernioChannel {
+  id: string;
+  platform: string;
+  username: string;
+  profileName: string | null;
+}
+
+/** Connected accounts on the Zernio workspace this key belongs to. */
+export async function zernioListAccounts(apiKey?: string): Promise<ZernioChannel[]> {
+  const raw = await zernioFetch('/accounts', undefined, apiKey);
+  const list = (Array.isArray(raw) ? raw : (raw.accounts ?? raw.data ?? [])) as Record<
+    string,
+    unknown
+  >[];
+  return list.map((a) => {
+    const profile = a.profileId as Record<string, unknown> | string | null;
+    return {
+      id: String(a._id ?? a.id ?? ''),
+      platform: String(a.platform ?? ''),
+      username: String(a.username ?? a.name ?? ''),
+      profileName:
+        profile && typeof profile === 'object' && typeof profile.name === 'string'
+          ? profile.name
+          : null,
+    };
+  });
+}
+
 /** Copy a file from a (presigned) source URL into Zernio's media store. Returns the public URL. */
 export async function zernioUploadFromUrl(
   sourceUrl: string,
   filename: string,
   contentType: string,
-  sizeBytes?: number
+  sizeBytes?: number,
+  apiKey?: string
 ): Promise<string> {
-  const presign = await zernioFetch('/media/presign', {
-    method: 'POST',
-    body: JSON.stringify({ filename, contentType }),
-  });
+  const presign = await zernioFetch(
+    '/media/presign',
+    { method: 'POST', body: JSON.stringify({ filename, contentType }) },
+    apiKey
+  );
   const nested = (presign.data ?? {}) as Record<string, unknown>;
   const uploadUrl = (presign.uploadUrl ?? nested.uploadUrl) as string | undefined;
   const publicUrl = (presign.publicUrl ?? nested.publicUrl) as string | undefined;
@@ -86,14 +122,21 @@ export interface ZernioPlatformTarget {
   platformSpecificData?: Record<string, unknown>;
 }
 
-export async function zernioCreatePost(payload: {
-  content: string;
-  mediaItems: ZernioMediaItem[];
-  platforms: ZernioPlatformTarget[];
-  isDraft?: boolean;
-  publishNow?: boolean;
-}): Promise<{ postId: string | null; raw: Record<string, unknown> }> {
-  const raw = await zernioFetch('/posts', { method: 'POST', body: JSON.stringify(payload) });
+export async function zernioCreatePost(
+  payload: {
+    content: string;
+    mediaItems: ZernioMediaItem[];
+    platforms: ZernioPlatformTarget[];
+    isDraft?: boolean;
+    publishNow?: boolean;
+  },
+  apiKey?: string
+): Promise<{ postId: string | null; raw: Record<string, unknown> }> {
+  const raw = await zernioFetch(
+    '/posts',
+    { method: 'POST', body: JSON.stringify(payload) },
+    apiKey
+  );
   const nested = (raw.post ?? raw.data ?? raw) as Record<string, unknown>;
   const postId =
     typeof nested._id === 'string' ? nested._id : typeof nested.id === 'string' ? nested.id : null;

@@ -1,22 +1,28 @@
 import { NextRequest } from 'next/server';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { isAgentRequest } from '@/lib/agent-auth';
-import { publishVideoToYouTube, PublishError } from '@/lib/publish-video';
+import { publishVideoToYouTube, PublishError, type PublishMode } from '@/lib/publish-video';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
   params: Promise<{ videoId: string }>;
 }
 
-// POST /api/agent/videos/[videoId]/publish { publishNow?: boolean }
-// Automation rail: approved video -> Zernio YouTube draft (or straight publish).
+// POST /api/agent/videos/[videoId]/publish { mode?: 'studio'|'draft'|'live', publishNow?: boolean }
+// Automation rail: draft = park in Zernio; studio = private video in the
+// client's YouTube Studio; live = straight out + auto-PUBLISHED.
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     if (!isAgentRequest(request)) return apiErrors.unauthorized();
     const { videoId } = await params;
     const body = await request.json().catch(() => null);
+    const mode: PublishMode = ['studio', 'draft', 'live'].includes(body?.mode)
+      ? body.mode
+      : body?.publishNow === true
+        ? 'live'
+        : 'draft';
     const result = await publishVideoToYouTube(videoId, {
-      publishNow: body?.publishNow === true,
+      mode,
       actorName: 'Agency OS',
     });
     return withCacheControl(successResponse(result), 'private, no-store');

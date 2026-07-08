@@ -1,13 +1,20 @@
 // Publish a KreatorKit video to YouTube through Zernio.
 // The active cut is copied from our storage into Zernio's media store, then a
-// post is created against the workspace's wired YouTube account. Default is a
-// Zernio DRAFT (thumbnails need a manual confirm in the Zernio UI before
-// publish — the API-set thumbnail does not reliably stick).
+// post is created against the workspace's wired YouTube channel.
+//
+// Modes:
+//   studio — publishNow with visibility PRIVATE: the video lands in the
+//            client's YouTube Studio as a private draft they set live. This is
+//            the "Push to YouTube" button. Gated on title+description+thumbnail.
+//   draft  — parked in Zernio as a draft (automation staging).
+//   live   — publishNow public; the item auto-flips to PUBLISHED.
 
 import { db } from '@/lib/db';
 import { createPresignedFileGetUrl, createPresignedVideoGetUrl } from '@/lib/r2';
 import { isZernioConfigured, zernioCreatePost, zernioUploadFromUrl } from '@/lib/zernio';
 import type { ZernioMediaItem } from '@/lib/zernio';
+
+export type PublishMode = 'studio' | 'draft' | 'live';
 
 export class PublishError extends Error {
   constructor(
@@ -18,12 +25,55 @@ export class PublishError extends Error {
   }
 }
 
-export function workspaceYouTubeAccountId(publishing: unknown): string | null {
-  if (!publishing || typeof publishing !== 'object') return null;
+export interface ZernioWorkspaceConfig {
+  apiKey?: string;
+  youtubeAccountId: string | null;
+}
+
+/** Parse Workspace.publishing — { zernio: { apiKey?, youtubeAccountId? } }. */
+export function workspaceZernioConfig(publishing: unknown): ZernioWorkspaceConfig {
+  if (!publishing || typeof publishing !== 'object') return { youtubeAccountId: null };
   const zernio = (publishing as Record<string, unknown>).zernio;
-  if (!zernio || typeof zernio !== 'object') return null;
-  const accountId = (zernio as Record<string, unknown>).youtubeAccountId;
-  return typeof accountId === 'string' && accountId ? accountId : null;
+  if (!zernio || typeof zernio !== 'object') return { youtubeAccountId: null };
+  const cfg = zernio as Record<string, unknown>;
+  return {
+    apiKey: typeof cfg.apiKey === 'string' && cfg.apiKey ? cfg.apiKey : undefined,
+    youtubeAccountId:
+      typeof cfg.youtubeAccountId === 'string' && cfg.youtubeAccountId
+        ? cfg.youtubeAccountId
+        : null,
+  };
+}
+
+export function workspaceYouTubeAccountId(publishing: unknown): string | null {
+  return workspaceZernioConfig(publishing).youtubeAccountId;
+}
+
+/** Does this workspace have a usable publish rail (channel + some key)? */
+export function isWorkspacePublishReady(publishing: unknown): boolean {
+  const cfg = workspaceZernioConfig(publishing);
+  return Boolean(cfg.youtubeAccountId && (cfg.apiKey || isZernioConfigured()));
+}
+
+export interface PublishChecks {
+  title: boolean;
+  description: boolean;
+  thumbnail: boolean;
+  cut: boolean;
+}
+
+export function publishChecks(video: {
+  title: string;
+  description: string | null;
+  thumbnailUrl: string | null;
+  versions: { providerId: string; videoId: string }[];
+}): PublishChecks {
+  return {
+    title: Boolean(video.title?.trim()),
+    description: Boolean(video.description?.trim()),
+    thumbnail: Boolean(video.thumbnailUrl),
+    cut: video.versions.some((v) => v.providerId === 'r2' && v.videoId),
+  };
 }
 
 function guessImageContentType(name: string): string {
@@ -33,7 +83,7 @@ function guessImageContentType(name: string): string {
 }
 
 export interface PublishResult {
-  mode: 'draft' | 'published';
+  mode: PublishMode;
   postId: string | null;
   accountId: string;
   thumbnailAttached: boolean;
@@ -41,14 +91,9 @@ export interface PublishResult {
 
 export async function publishVideoToYouTube(
   videoId: string,
-  opts: { publishNow?: boolean; actorName?: string } = {}
+  opts: { mode?: PublishMode; actorName?: string } = {}
 ): Promise<PublishResult> {
-  if (!isZernioConfigured()) {
-    throw new PublishError(
-      'Publishing is not configured on the server (ZERNIO_API_KEY missing)',
-      503
-    );
-  }
+  const mode: PublishMode = opts.mode ?? 'draft';
 
   const video = await db.video.findUnique({
     where: { id: videoId },
@@ -61,25 +106,42 @@ export async function publishVideoToYouTube(
   });
   if (!video) throw new PublishError('Video not found', 404);
 
-  const accountId = workspaceYouTubeAccountId(video.project.workspace.publishing);
-  if (!accountId) {
+  const cfg = workspaceZernioConfig(video.project.workspace.publishing);
+  if (!cfg.apiKey && !isZernioConfigured()) {
     throw new PublishError(
-      'No YouTube account is wired to this workspace yet — set publishing.zernio.youtubeAccountId'
+      'Publishing is not configured (no Zernio API key on the server or this workspace)',
+      503
+    );
+  }
+  if (!cfg.youtubeAccountId) {
+    throw new PublishError(
+      'No YouTube channel is wired to this workspace yet — set it in Settings → Publishing'
     );
   }
 
-  const cut = video.versions[0];
-  if (!cut || cut.providerId !== 'r2' || !cut.videoId) {
+  const checks = publishChecks(video);
+  if (!checks.cut)
     throw new PublishError('No uploaded cut to publish — upload the final cut first');
+  if (mode !== 'draft') {
+    const missing = [
+      !checks.title && 'a title',
+      !checks.description && 'a description',
+      !checks.thumbnail && 'a thumbnail',
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      throw new PublishError(`Not ready to push — add ${missing.join(', ')} first`);
+    }
   }
 
+  const cut = video.versions[0];
   const safeName = video.title.replace(/[^A-Za-z0-9 _-]/g, '').trim() || 'video';
   const sourceUrl = await createPresignedVideoGetUrl(cut.videoId, `${safeName}.mp4`, 6 * 3600);
   const mediaUrl = await zernioUploadFromUrl(
     sourceUrl,
     `${safeName}.mp4`,
     'video/mp4',
-    cut.sizeBytes ? Number(cut.sizeBytes) : undefined
+    cut.sizeBytes ? Number(cut.sizeBytes) : undefined,
+    cfg.apiKey
   );
 
   // Best-effort thumbnail copy (item thumbnails are stored as R2_FILE assets).
@@ -100,7 +162,8 @@ export async function publishVideoToYouTube(
           thumbSource,
           asset.displayName,
           guessImageContentType(asset.displayName),
-          asset.sizeBytes ? Number(asset.sizeBytes) : undefined
+          asset.sizeBytes ? Number(asset.sizeBytes) : undefined,
+          cfg.apiKey
         );
       }
     } catch {
@@ -111,36 +174,43 @@ export async function publishVideoToYouTube(
   const mediaItems: ZernioMediaItem[] = [
     { type: 'video', url: mediaUrl, ...(thumbnailUrl ? { thumbnail: thumbnailUrl } : {}) },
   ];
-  const { postId } = await zernioCreatePost({
-    content: video.description?.trim() || video.brief?.trim() || video.title,
-    mediaItems,
-    platforms: [
-      {
-        platform: 'youtube',
-        accountId,
-        platformSpecificData: {
-          title: video.title,
-          visibility: 'public',
-          madeForKids: false,
+  const { postId } = await zernioCreatePost(
+    {
+      content: video.description?.trim() || video.brief?.trim() || video.title,
+      mediaItems,
+      platforms: [
+        {
+          platform: 'youtube',
+          accountId: cfg.youtubeAccountId,
+          platformSpecificData: {
+            title: video.title,
+            visibility: mode === 'studio' ? 'private' : 'public',
+            madeForKids: false,
+          },
         },
-      },
-    ],
-    ...(opts.publishNow ? { publishNow: true } : { isDraft: true }),
-  });
-
-  const mode: PublishResult['mode'] = opts.publishNow ? 'published' : 'draft';
-  await db.videoNote.create({
-    data: {
-      videoId: video.id,
-      body:
-        mode === 'published'
-          ? `🚀 Published to YouTube via Zernio${postId ? ` (post ${postId})` : ''}${opts.actorName ? ` — by ${opts.actorName}` : ''}`
-          : `📤 Sent to Zernio as a YouTube draft${postId ? ` (post ${postId})` : ''}${opts.actorName ? ` — by ${opts.actorName}` : ''}. Confirm the thumbnail in Zernio before publishing.`,
+      ],
+      ...(mode === 'draft' ? { isDraft: true } : { publishNow: true }),
     },
-  });
-  if (mode === 'published') {
+    cfg.apiKey
+  );
+
+  const by = opts.actorName ? ` — by ${opts.actorName}` : '';
+  const noteBody =
+    mode === 'studio'
+      ? `📺 Pushed to YouTube${postId ? ` (Zernio post ${postId})` : ''}${by}. It lands in YouTube Studio as a PRIVATE video — set it live from Studio when ready.`
+      : mode === 'live'
+        ? `🚀 Published to YouTube via Zernio${postId ? ` (post ${postId})` : ''}${by}`
+        : `📤 Sent to Zernio as a YouTube draft${postId ? ` (post ${postId})` : ''}${by}. Confirm the thumbnail in Zernio before publishing.`;
+  await db.videoNote.create({ data: { videoId: video.id, body: noteBody } });
+
+  if (mode === 'live') {
     await db.video.update({ where: { id: video.id }, data: { status: 'PUBLISHED' } });
   }
 
-  return { mode, postId, accountId, thumbnailAttached: Boolean(thumbnailUrl) };
+  return {
+    mode,
+    postId,
+    accountId: cfg.youtubeAccountId,
+    thumbnailAttached: Boolean(thumbnailUrl),
+  };
 }

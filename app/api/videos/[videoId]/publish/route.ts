@@ -6,9 +6,10 @@ import { rateLimit } from '@/lib/rate-limit';
 import {
   publishVideoToYouTube,
   PublishError,
-  workspaceYouTubeAccountId,
+  publishChecks,
+  isWorkspacePublishReady,
+  type PublishMode,
 } from '@/lib/publish-video';
-import { isZernioConfigured } from '@/lib/zernio';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
@@ -18,19 +19,23 @@ interface RouteParams {
 async function videoWorkspaceAccess(videoId: string, userId: string) {
   const video = await db.video.findUnique({
     where: { id: videoId },
-    select: {
-      id: true,
+    include: {
       project: {
         select: { workspace: { select: { id: true, ownerId: true, publishing: true } } },
+      },
+      versions: {
+        where: { isActive: true },
+        take: 1,
+        select: { providerId: true, videoId: true },
       },
     },
   });
   if (!video) return null;
   const workspace = video.project.workspace;
-  return { workspace, access: await checkWorkspaceAccess(workspace, userId) };
+  return { video, workspace, access: await checkWorkspaceAccess(workspace, userId) };
 }
 
-// GET — can this video be published? (drives the button in the UI)
+// GET — publish readiness: is the rail wired, and are title/description/thumbnail in?
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const session = await auth();
@@ -41,9 +46,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     if (!ctx.access.hasAccess) return apiErrors.forbidden('Access denied');
     return withCacheControl(
       successResponse({
-        configured:
-          isZernioConfigured() && Boolean(workspaceYouTubeAccountId(ctx.workspace.publishing)),
+        configured: isWorkspacePublishReady(ctx.workspace.publishing),
         canPublish: ctx.access.canEdit,
+        checks: publishChecks(ctx.video),
       }),
       'private, no-store'
     );
@@ -53,7 +58,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-// POST { publishNow?: boolean } — hand the active cut to Zernio for YouTube.
+// POST { mode?: 'studio'|'draft'|'live' } — hand the active cut to Zernio for YouTube.
+// 'studio' (the Push to YouTube button) lands as a PRIVATE video in YouTube Studio.
 export async function POST(request: NextRequest, { params }: RouteParams) {
   try {
     const limited = await rateLimit(request, 'mutate');
@@ -66,8 +72,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     if (!ctx.access.canEdit) return apiErrors.forbidden('Only workspace admins can publish');
 
     const body = await request.json().catch(() => null);
+    const mode: PublishMode = ['studio', 'draft', 'live'].includes(body?.mode)
+      ? body.mode
+      : body?.publishNow === true // back-compat with the first rail
+        ? 'live'
+        : 'studio';
     const result = await publishVideoToYouTube(videoId, {
-      publishNow: body?.publishNow === true,
+      mode,
       actorName: session.user.name ?? undefined,
     });
     return withCacheControl(successResponse(result), 'private, no-store');

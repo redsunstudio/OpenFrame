@@ -3,8 +3,7 @@ import { notFound, redirect } from 'next/navigation';
 import { ArrowLeft } from 'lucide-react';
 import { auth, checkWorkspaceAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
-import { workspaceYouTubeAccountId } from '@/lib/publish-video';
-import { isZernioConfigured } from '@/lib/zernio';
+import { isWorkspacePublishReady } from '@/lib/publish-video';
 import { VideoItemClient } from '@/components/video-item/item-client';
 
 interface ItemPageProps {
@@ -79,9 +78,7 @@ export default async function VideoItemPage({ params }: ItemPageProps) {
           })),
         }}
         canEdit={isAdmin || access.canEdit}
-        publishReady={
-          isZernioConfigured() && Boolean(workspaceYouTubeAccountId(workspace.publishing))
-        }
+        publishReady={isWorkspacePublishReady(workspace.publishing)}
       />
     </div>
   );

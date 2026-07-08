@@ -113,7 +113,11 @@ export function VideoItemClient({
   const lastSavedDesc = useRef(video.description ?? '');
   const [movingStatus, setMovingStatus] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
-  const [publishing, setPublishing] = useState<'draft' | 'now' | null>(null);
+  const [publishing, setPublishing] = useState(false);
+  const [title, setTitle] = useState(video.title);
+  const [titleDraft, setTitleDraft] = useState(video.title);
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [savingTitle, setSavingTitle] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [uploads, setUploads] = useState<{ name: string; pct: number; state: string }[]>([]);
@@ -258,29 +262,45 @@ export function VideoItemClient({
     }
   }
 
-  async function publish(mode: 'draft' | 'now') {
-    setPublishing(mode);
+  async function saveTitle() {
+    const next = titleDraft.trim();
+    if (!next || next === title) {
+      setEditingTitle(false);
+      setTitleDraft(title);
+      return;
+    }
+    setSavingTitle(true);
+    try {
+      await patchItem({ title: next });
+      setTitle(next);
+      setEditingTitle(false);
+      router.refresh();
+    } catch {
+      toast.error('Could not rename the video');
+    } finally {
+      setSavingTitle(false);
+    }
+  }
+
+  /** Push to YouTube — lands in the channel's YouTube Studio as a private draft. */
+  async function pushToYouTube() {
+    setPublishing(true);
     try {
       const r = await fetch(`/api/videos/${video.id}/publish`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ publishNow: mode === 'now' }),
+        body: JSON.stringify({ mode: 'studio' }),
       });
       const d = await r.json();
-      if (!r.ok) throw new Error(d?.error?.message || 'Publishing failed');
-      if (d.data.mode === 'published') {
-        setStatus('PUBLISHED');
-        toast.success('Published to YouTube 🚀');
-      } else {
-        toast.success('Draft created in Zernio — confirm the thumbnail there, then publish');
-      }
+      if (!r.ok) throw new Error(d?.error?.message || 'Push failed');
+      toast.success('Pushed 📺 — it lands in YouTube Studio as a private draft');
       setPublishOpen(false);
       await loadNotes();
       router.refresh();
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Publishing failed');
+      toast.error(e instanceof Error ? e.message : 'Push failed');
     } finally {
-      setPublishing(null);
+      setPublishing(false);
     }
   }
 
@@ -543,7 +563,43 @@ export function VideoItemClient({
     <div className="space-y-6">
       {/* Title + status */}
       <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
-        <h1 className="text-2xl font-bold tracking-tight">{video.title}</h1>
+        {editingTitle ? (
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <input
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') void saveTitle();
+                if (e.key === 'Escape') {
+                  setEditingTitle(false);
+                  setTitleDraft(title);
+                }
+              }}
+              maxLength={200}
+              autoFocus
+              className="flex-1 min-w-0 bg-transparent text-2xl font-bold tracking-tight border-b border-primary/50 focus:outline-none"
+            />
+            <Button size="sm" onClick={() => void saveTitle()} disabled={savingTitle}>
+              {savingTitle ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Save'}
+            </Button>
+          </div>
+        ) : (
+          <h1 className="text-2xl font-bold tracking-tight group flex items-center gap-2 min-w-0">
+            <span className="truncate">{title}</span>
+            {canEdit && (
+              <button
+                className="text-muted-foreground/50 hover:text-foreground text-base transition-colors flex-none"
+                title="Rename"
+                onClick={() => {
+                  setTitleDraft(title);
+                  setEditingTitle(true);
+                }}
+              >
+                ✏️
+              </button>
+            )}
+          </h1>
+        )}
         <div className="flex items-center gap-2">
           {canEdit && (
             <Button
@@ -560,9 +616,9 @@ export function VideoItemClient({
               📦 Archive video
             </Button>
           )}
-          {canEdit && publishReady && ['APPROVED', 'PUBLISHED'].includes(stageOf(status)) && (
+          {canEdit && publishReady && video.versions.length > 0 && (
             <Button size="sm" onClick={() => setPublishOpen(true)}>
-              🚀 Publish
+              📺 Push to YouTube
             </Button>
           )}
           {movingStatus && <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />}
@@ -933,26 +989,83 @@ export function VideoItemClient({
       <AlertDialog open={publishOpen} onOpenChange={(o) => !publishing && setPublishOpen(o)}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Publish to YouTube</AlertDialogTitle>
+            <AlertDialogTitle>📺 Push to YouTube</AlertDialogTitle>
             <AlertDialogDescription>
-              The current cut ships to YouTube via Zernio with this title and description.
-              &quot;Draft in Zernio&quot; parks it there for a final check (recommended — thumbnails
-              need confirming in Zernio). &quot;Publish now&quot; sends it straight to the channel.
+              The current cut lands in the channel&apos;s YouTube Studio as a private draft — set it
+              live from Studio when ready. Three things need to be in first:
             </AlertDialogDescription>
           </AlertDialogHeader>
+
+          <div className="space-y-4 text-sm">
+            <div className="flex items-start gap-2.5">
+              <span className="flex-none mt-0.5">{title.trim() ? '✅' : '❌'}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Title</p>
+                <p className="text-muted-foreground truncate">
+                  {title.trim() || 'Missing — rename the video first'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5">
+              <span className="flex-none mt-0.5">{description.trim() ? '✅' : '❌'}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Description</p>
+                {description.trim() ? (
+                  <p className="text-muted-foreground line-clamp-2">{description}</p>
+                ) : (
+                  <Textarea
+                    value={description}
+                    onChange={(e) => onDescriptionChange(e.target.value)}
+                    onBlur={onDescriptionBlur}
+                    placeholder="Write the YouTube description here…"
+                    rows={3}
+                    maxLength={5000}
+                    className="mt-1.5 text-sm"
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2.5">
+              <span className="flex-none mt-0.5">{thumbnailUrl ? '✅' : '❌'}</span>
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Thumbnail</p>
+                {thumbnailUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={thumbnailUrl.includes('?') ? thumbnailUrl : `${thumbnailUrl}?inline=1`}
+                    alt=""
+                    className="mt-1.5 h-16 rounded-md border object-cover"
+                  />
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-1.5"
+                    disabled={uploadingThumb}
+                    onClick={() => thumbInput.current?.click()}
+                  >
+                    {uploadingThumb ? (
+                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                    ) : (
+                      <Upload className="h-4 w-4 mr-1.5" />
+                    )}
+                    Upload thumbnail
+                  </Button>
+                )}
+              </div>
+            </div>
+          </div>
+
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={publishing !== null}>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={publishing}>Cancel</AlertDialogCancel>
             <Button
-              variant="outline"
-              onClick={() => void publish('draft')}
-              disabled={publishing !== null}
+              onClick={() => void pushToYouTube()}
+              disabled={publishing || !title.trim() || !description.trim() || !thumbnailUrl}
             >
-              {publishing === 'draft' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📤 '}
-              Draft in Zernio
-            </Button>
-            <Button onClick={() => void publish('now')} disabled={publishing !== null}>
-              {publishing === 'now' ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '🚀 '}
-              Publish now
+              {publishing ? <Loader2 className="h-4 w-4 mr-1.5 animate-spin" /> : '📺 '}
+              Push to YouTube
             </Button>
           </AlertDialogFooter>
         </AlertDialogContent>

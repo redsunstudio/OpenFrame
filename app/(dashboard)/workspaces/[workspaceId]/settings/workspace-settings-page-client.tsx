@@ -10,6 +10,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { Separator } from '@/components/ui/separator';
+import { PublishingSettings } from '@/components/workspace/publishing-settings';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -205,6 +206,10 @@ export default function WorkspaceSettingsPageClient({
           </form>
         </CardContent>
       </Card>
+
+      <div className="mt-8">
+        <PublishingSettings workspaceId={workspaceId} />
+      </div>
 
       {canDelete ? (
         <>
