@@ -12,7 +12,6 @@ import {
   Loader2,
   Music,
   Play,
-  Save,
   Upload,
   User as UserIcon,
 } from 'lucide-react';
@@ -81,7 +80,9 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
   const [status, setStatus] = useState(video.status);
   const [brief, setBrief] = useState(video.brief ?? '');
   const [thumbnailUrl, setThumbnailUrl] = useState(video.thumbnailUrl);
-  const [savingBrief, setSavingBrief] = useState(false);
+  const [briefState, setBriefState] = useState<'idle' | 'typing' | 'saving' | 'saved' | 'error'>('idle');
+  const briefTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastSavedBrief = useRef(video.brief ?? '');
   const [movingStatus, setMovingStatus] = useState(false);
   const [assets, setAssets] = useState<Asset[]>([]);
   const [assetsLoaded, setAssetsLoaded] = useState(false);
@@ -145,16 +146,32 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
     }
   }
 
-  async function saveBrief() {
-    setSavingBrief(true);
-    try {
-      await patchItem({ brief: brief.trim() || null });
-      toast.success('Brief saved');
-    } catch {
-      toast.error('Could not save the brief');
-    } finally {
-      setSavingBrief(false);
+  async function persistBrief(value: string) {
+    if (value.trim() === lastSavedBrief.current.trim()) {
+      setBriefState('idle');
+      return;
     }
+    setBriefState('saving');
+    try {
+      await patchItem({ brief: value.trim() || null });
+      lastSavedBrief.current = value;
+      setBriefState('saved');
+      setTimeout(() => setBriefState((st) => (st === 'saved' ? 'idle' : st)), 2000);
+    } catch {
+      setBriefState('error');
+    }
+  }
+
+  function onBriefChange(value: string) {
+    setBrief(value);
+    setBriefState('typing');
+    if (briefTimer.current) clearTimeout(briefTimer.current);
+    briefTimer.current = setTimeout(() => void persistBrief(value), 1200);
+  }
+
+  function onBriefBlur() {
+    if (briefTimer.current) clearTimeout(briefTimer.current);
+    void persistBrief(brief);
   }
 
   async function putWithRetry(
@@ -438,21 +455,23 @@ export function VideoItemClient({ workspaceId, video, canEdit }: VideoItemClient
           <CardContent className="space-y-3">
             <Textarea
               value={brief}
-              onChange={(e) => setBrief(e.target.value)}
-              placeholder="The angle, the hook, references — anything the shoot or the edit needs to know."
+              onChange={(e) => onBriefChange(e.target.value)}
+              onBlur={onBriefBlur}
+              placeholder="The angle, the hook, references — anything the shoot or the edit needs to know. Saves as you type."
               rows={5}
               maxLength={5000}
               disabled={!canEdit}
             />
             {canEdit && (
-              <Button size="sm" variant="outline" onClick={saveBrief} disabled={savingBrief}>
-                {savingBrief ? (
-                  <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
-                ) : (
-                  <Save className="h-4 w-4 mr-1.5" />
+              <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
+                {briefState === 'saving' && 'Saving…'}
+                {briefState === 'saved' && '✓ Saved'}
+                {briefState === 'error' && (
+                  <button className="underline" onClick={() => void persistBrief(brief)}>
+                    Save failed — tap to retry
+                  </button>
                 )}
-                Save brief
-              </Button>
+              </p>
             )}
           </CardContent>
         </Card>
