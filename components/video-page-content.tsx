@@ -797,16 +797,18 @@ export function VideoPageContent({
             />
           )}
 
-          {mode === 'watch' && !embed && !isFullscreenMode && !!video.canComment && (
-            <ReviewDecisionBar
-              videoId={videoId}
-              status={video.status ?? ''}
-              guestName={normalizedGuestName}
-              onDecided={(nextStatus) =>
-                setVideo((prev) => (prev ? { ...prev, status: nextStatus } : prev))
-              }
-            />
-          )}
+          {!embed &&
+            !isFullscreenMode &&
+            (mode === 'dashboard' || !!video.canComment) && (
+              <ReviewDecisionBar
+                videoId={videoId}
+                status={video.status ?? ''}
+                guestName={normalizedGuestName}
+                onDecided={(nextStatus) =>
+                  setVideo((prev) => (prev ? { ...prev, status: nextStatus } : prev))
+                }
+              />
+            )}
 
           <PlayerCore
             activeVersionId={activeVersionId}
