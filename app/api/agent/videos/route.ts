@@ -20,6 +20,7 @@ function shape(v: {
   projectId: string;
   project: { workspaceId: string; workspace: { name: string; slug: string } };
   _count: { versions: number };
+  versions: { _count: { comments: number }; comments: { id: string }[] }[];
 }) {
   return {
     id: v.id,
@@ -35,6 +36,9 @@ function shape(v: {
     workspaceName: v.project.workspace.name,
     workspaceSlug: v.project.workspace.slug,
     versionCount: v._count.versions,
+    // Active-version review feedback — mirrors the pipeline board badge.
+    commentCount: v.versions[0]?._count.comments ?? 0,
+    openComments: v.versions[0]?.comments.length ?? 0,
   };
 }
 
@@ -60,6 +64,14 @@ export async function GET(request: NextRequest) {
           select: { workspaceId: true, workspace: { select: { name: true, slug: true } } },
         },
         _count: { select: { versions: true } },
+        versions: {
+          where: { isActive: true },
+          take: 1,
+          select: {
+            _count: { select: { comments: true } },
+            comments: { where: { isResolved: false }, select: { id: true } },
+          },
+        },
       },
     });
     return withCacheControl(successResponse({ videos: videos.map(shape) }), 'private, no-store');
