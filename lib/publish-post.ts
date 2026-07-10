@@ -123,7 +123,31 @@ export async function publishPostToLinkedIn(
         firstVideo.sizeBytes ? Number(firstVideo.sizeBytes) : undefined,
         apiKey
       );
-      mediaItems.push({ type: 'video', url });
+      // LinkedIn supports a custom thumbnail on video posts and Zernio's media
+      // item schema carries one — forward the item thumbnail when set.
+      let thumbnail: string | undefined;
+      const thumbAsset = thumbnailAssetId
+        ? video.assets.find((a) => a.id === thumbnailAssetId)
+        : undefined;
+      if (thumbAsset?.sourceUrl?.startsWith('files/')) {
+        try {
+          const thumbSrc = await createPresignedFileGetUrl(
+            thumbAsset.sourceUrl,
+            thumbAsset.displayName,
+            3600
+          );
+          thumbnail = await zernioUploadFromUrl(
+            thumbSrc,
+            thumbAsset.displayName,
+            guessImageContentType(thumbAsset.displayName),
+            thumbAsset.sizeBytes ? Number(thumbAsset.sizeBytes) : undefined,
+            apiKey
+          );
+        } catch {
+          // best-effort — the video post still goes out without it
+        }
+      }
+      mediaItems.push({ type: 'video', url, ...(thumbnail ? { thumbnail } : {}) });
       mediaKind = 'video';
     }
   } else if (images.length > 0) {

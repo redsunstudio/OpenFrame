@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import { VIDEO_TYPES, typeMeta } from '@/lib/video-type';
+import { VIDEO_TYPES, typeMeta, typeOptionLabel } from '@/lib/video-type';
 
 export const PIPELINE_STAGES = [
   { key: 'IDEA', label: 'Idea', emoji: '💡' },
@@ -246,7 +246,7 @@ export function PipelineBoard({
           className="text-xs text-muted-foreground inline-flex items-center gap-1 font-mono"
           title={t.label}
         >
-          {t.emoji} {t.label}
+          {t.emoji} {typeOptionLabel(t)}
         </span>
         <span className="text-xs text-muted-foreground inline-flex items-center gap-1 font-mono">
           {v.currentVersion > 0 ? (
@@ -486,7 +486,7 @@ export function PipelineBoard({
               <SelectContent>
                 {VIDEO_TYPES.filter((t) => t.key !== 'POST' || allowPosts).map((t) => (
                   <SelectItem key={t.key} value={t.key}>
-                    {t.emoji} {t.label}
+                    {t.emoji} {typeOptionLabel(t)}
                   </SelectItem>
                 ))}
               </SelectContent>

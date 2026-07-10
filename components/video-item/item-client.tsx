@@ -38,7 +38,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { PIPELINE_STAGES, stageOf } from '@/components/pipeline-board';
-import { VIDEO_TYPES, typeMeta, isImageAsset } from '@/lib/video-type';
+import { VIDEO_TYPES, typeMeta, isImageAsset, typeOptionLabel } from '@/lib/video-type';
 
 interface ItemVersion {
   id: string;
@@ -878,7 +878,7 @@ export function VideoItemClient({
           <SelectContent>
             {VIDEO_TYPES.filter((t) => t.key !== 'POST' || allowPosts || isPost).map((t) => (
               <SelectItem key={t.key} value={t.key}>
-                {t.emoji} {t.label}
+                {t.emoji} {typeOptionLabel(t)}
               </SelectItem>
             ))}
           </SelectContent>
@@ -1000,65 +1000,123 @@ export function VideoItemClient({
         </Card>
       )}
 
-      {/* Brief + description */}
+      {/* Posts lead with the copy — it IS the deliverable. Videos lead with the brief. */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Brief</CardTitle>
+          <CardTitle className="text-base flex items-center justify-between">
+            <span>{isPost ? '📝 Post copy' : 'Brief'}</span>
+            {isPost && (
+              <span className="text-xs font-normal text-muted-foreground font-mono">
+                {description.length}/5000
+              </span>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent className="space-y-3">
-          <Textarea
-            value={brief}
-            onChange={(e) => onBriefChange(e.target.value)}
-            onBlur={onBriefBlur}
-            placeholder="The angle, the hook, references — anything the shoot or the edit needs to know…"
-            rows={5}
-            maxLength={5000}
-            disabled={!canEdit}
-            className="border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0 focus-visible:border-0 text-[15px] leading-relaxed resize-none placeholder:text-muted-foreground/50"
-          />
-          {canEdit && (
-            <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
-              {briefState === 'saving' && 'Saving…'}
-              {briefState === 'saved' && '✓ Saved'}
-              {briefState === 'error' && (
-                <button className="underline" onClick={() => void persistBrief(brief)}>
-                  Save failed — tap to retry
-                </button>
+          {isPost ? (
+            <>
+              <Textarea
+                value={description}
+                onChange={(e) => onDescriptionChange(e.target.value)}
+                onBlur={onDescriptionBlur}
+                placeholder="The LinkedIn post — write it exactly as it should read, @tags included…"
+                rows={8}
+                maxLength={5000}
+                disabled={!canEdit}
+                className="text-[15px] leading-relaxed resize-y min-h-[160px]"
+              />
+              {canEdit && (
+                <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
+                  {descState === 'saving' && 'Saving…'}
+                  {descState === 'saved' && '✓ Saved'}
+                  {descState === 'error' && (
+                    <button
+                      className="underline"
+                      onClick={() => void persistDescription(description)}
+                    >
+                      Save failed — tap to retry
+                    </button>
+                  )}
+                </p>
               )}
-            </p>
-          )}
-
-          <div className="border-t pt-3">
-            <p className="text-sm font-medium mb-1">{isPost ? 'Post copy' : 'Description'}</p>
-            <Textarea
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              onBlur={onDescriptionBlur}
-              placeholder={
-                isPost
-                  ? 'The LinkedIn post — write it exactly as it should read, @tags included…'
-                  : 'The YouTube description — written here, shipped with the video on publish…'
-              }
-              rows={5}
-              maxLength={5000}
-              disabled={!canEdit}
-              className="border-0 bg-transparent px-0 py-0 shadow-none focus-visible:ring-0 focus-visible:border-0 text-[15px] leading-relaxed resize-none placeholder:text-muted-foreground/50"
-            />
-            {canEdit && (
-              <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
-                {descState === 'saving' && 'Saving…'}
-                {descState === 'saved' && '✓ Saved'}
-                {descState === 'error' && (
-                  <button
-                    className="underline"
-                    onClick={() => void persistDescription(description)}
-                  >
-                    Save failed — tap to retry
-                  </button>
+              <div className="border-t pt-3 space-y-2">
+                <p className="text-sm font-medium">Brief (internal — never posted)</p>
+                <Textarea
+                  value={brief}
+                  onChange={(e) => onBriefChange(e.target.value)}
+                  onBlur={onBriefBlur}
+                  placeholder="The angle, references, context — anything the team needs to know…"
+                  rows={3}
+                  maxLength={5000}
+                  disabled={!canEdit}
+                  className="text-sm leading-relaxed resize-y"
+                />
+                {canEdit && (
+                  <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
+                    {briefState === 'saving' && 'Saving…'}
+                    {briefState === 'saved' && '✓ Saved'}
+                    {briefState === 'error' && (
+                      <button className="underline" onClick={() => void persistBrief(brief)}>
+                        Save failed — tap to retry
+                      </button>
+                    )}
+                  </p>
                 )}
-              </p>
-            )}
-          </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <Textarea
+                value={brief}
+                onChange={(e) => onBriefChange(e.target.value)}
+                onBlur={onBriefBlur}
+                placeholder="The angle, the hook, references — anything the shoot or the edit needs to know…"
+                rows={5}
+                maxLength={5000}
+                disabled={!canEdit}
+                className="text-[15px] leading-relaxed resize-y"
+              />
+              {canEdit && (
+                <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
+                  {briefState === 'saving' && 'Saving…'}
+                  {briefState === 'saved' && '✓ Saved'}
+                  {briefState === 'error' && (
+                    <button className="underline" onClick={() => void persistBrief(brief)}>
+                      Save failed — tap to retry
+                    </button>
+                  )}
+                </p>
+              )}
+
+              <div className="border-t pt-3">
+                <p className="text-sm font-medium mb-1">Description</p>
+                <Textarea
+                  value={description}
+                  onChange={(e) => onDescriptionChange(e.target.value)}
+                  onBlur={onDescriptionBlur}
+                  placeholder="The YouTube description — written here, shipped with the video on publish…"
+                  rows={5}
+                  maxLength={5000}
+                  disabled={!canEdit}
+                  className="text-[15px] leading-relaxed resize-y"
+                />
+                {canEdit && (
+                  <p className="text-xs text-muted-foreground min-h-[1rem]" aria-live="polite">
+                    {descState === 'saving' && 'Saving…'}
+                    {descState === 'saved' && '✓ Saved'}
+                    {descState === 'error' && (
+                      <button
+                        className="underline"
+                        onClick={() => void persistDescription(description)}
+                      >
+                        Save failed — tap to retry
+                      </button>
+                    )}
+                  </p>
+                )}
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
@@ -1195,6 +1253,12 @@ export function VideoItemClient({
               )}
             </span>
           </CardTitle>
+          {isPost && (
+            <p className="text-xs text-muted-foreground">
+              Images post as a carousel (up to 9) · a PDF posts as a document · a video posts with
+              the item thumbnail as its LinkedIn cover.
+            </p>
+          )}
         </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">

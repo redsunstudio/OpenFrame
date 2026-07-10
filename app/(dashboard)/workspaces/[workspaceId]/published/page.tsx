@@ -89,7 +89,7 @@ export default async function PublishedPage({ params }: PublishedPageProps) {
           Nothing published yet — when a video ships, it moves off the pipeline and lands here.
         </div>
       ) : (
-        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+        <div className="rounded-xl border bg-card divide-y divide-border overflow-hidden">
           {videos.map((v) => {
             const thumb = v.thumbnailUrl
               ? v.thumbnailUrl.includes('?')
@@ -101,69 +101,74 @@ export default async function PublishedPage({ params }: PublishedPageProps) {
             return (
               <div
                 key={v.id}
-                className="rounded-2xl border bg-card overflow-hidden group transition-colors hover:border-white/20"
+                className="flex items-center gap-4 px-4 py-3 group transition-colors border-l-2 border-l-transparent hover:border-l-primary hover:bg-white/[0.02]"
               >
-                <Link href={`/workspaces/${workspaceId}/videos/${v.id}`} className="block">
+                <Link
+                  href={`/workspaces/${workspaceId}/videos/${v.id}`}
+                  className="shrink-0 block"
+                >
                   {thumb ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img
                       src={thumb}
                       alt=""
-                      className="w-full aspect-video object-cover"
+                      className="w-24 aspect-video object-cover rounded-md"
                       loading="lazy"
                     />
                   ) : (
-                    <div className="w-full aspect-video bg-white/[0.04] flex items-center justify-center text-2xl">
+                    <div className="w-24 aspect-video bg-white/[0.04] rounded-md flex items-center justify-center text-lg">
                       🎬
                     </div>
                   )}
                 </Link>
-                <div className="p-4 space-y-2.5">
+                <div className="min-w-0 flex-1">
                   <Link
                     href={`/workspaces/${workspaceId}/videos/${v.id}`}
-                    className="text-sm font-medium leading-snug line-clamp-2 hover:text-primary transition-colors block"
+                    className="text-sm font-medium leading-snug line-clamp-1 hover:text-primary transition-colors"
                   >
+                    <span className="mr-1.5" title={t.label}>
+                      {t.emoji}
+                    </span>
                     {v.title}
                   </Link>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground font-mono">
-                    <span title={t.label}>{t.emoji}</span>
-                    {typeof stats.views === 'number' && (
-                      <span className="inline-flex items-center gap-1">
-                        <Eye className="h-3 w-3" />
-                        {fmtCount(stats.views)}
-                      </span>
-                    )}
-                    {typeof stats.likes === 'number' && (
-                      <span className="inline-flex items-center gap-1">
-                        <ThumbsUp className="h-3 w-3" />
-                        {fmtCount(stats.likes)}
-                      </span>
-                    )}
-                    {typeof stats.comments === 'number' && (
-                      <span className="inline-flex items-center gap-1">
-                        <MessageSquare className="h-3 w-3" />
-                        {fmtCount(stats.comments)}
-                      </span>
-                    )}
-                    {v.publishStatsAt && (
-                      <span className="ml-auto" title="Stats last synced">
-                        {v.publishStatsAt.toLocaleDateString('en-GB', {
-                          day: 'numeric',
-                          month: 'short',
-                        })}
-                      </span>
-                    )}
-                  </div>
                   {v.publishedUrl && (
                     <a
                       href={v.publishedUrl}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className="inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
+                      className="mt-1 inline-flex items-center gap-1.5 text-xs text-primary hover:underline"
                     >
                       Watch on YouTube
                       <ExternalLink className="h-3 w-3" />
                     </a>
+                  )}
+                </div>
+                <div className="hidden sm:flex items-center gap-4 text-xs text-muted-foreground font-mono shrink-0">
+                  {typeof stats.views === 'number' && (
+                    <span className="inline-flex items-center gap-1">
+                      <Eye className="h-3 w-3" />
+                      {fmtCount(stats.views)}
+                    </span>
+                  )}
+                  {typeof stats.likes === 'number' && (
+                    <span className="inline-flex items-center gap-1">
+                      <ThumbsUp className="h-3 w-3" />
+                      {fmtCount(stats.likes)}
+                    </span>
+                  )}
+                  {typeof stats.comments === 'number' && (
+                    <span className="inline-flex items-center gap-1">
+                      <MessageSquare className="h-3 w-3" />
+                      {fmtCount(stats.comments)}
+                    </span>
+                  )}
+                  {v.publishStatsAt && (
+                    <span title="Stats last synced">
+                      {v.publishStatsAt.toLocaleDateString('en-GB', {
+                        day: 'numeric',
+                        month: 'short',
+                      })}
+                    </span>
                   )}
                 </div>
               </div>
