@@ -115,6 +115,7 @@ export interface VideoData {
   id: string;
   title: string;
   description: string | null;
+  status?: string; // pipeline status (IDEA/EDITING/REVIEW/APPROVED/...) — present on the watch endpoint
   projectId: string;
   project: {
     name: string;

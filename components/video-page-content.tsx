@@ -7,6 +7,7 @@ import { cn } from '@/lib/utils';
 import { type AnnotationStroke, type AnnotationCanvasHandle } from '@/components/annotation-canvas';
 import { PlayerCore } from '@/components/video-page/player-core';
 import { VideoPageHeader } from '@/components/video-page/video-page-header';
+import { ReviewDecisionBar } from '@/components/video-page/review-decision-bar';
 import { ImagePreviewDialog } from '@/components/video-page/image-preview-dialog';
 import { CompareVersionsDialog } from '@/components/video-page/compare-versions-dialog';
 import { VideoPageLoading } from '@/components/video-page/video-page-loading';
@@ -793,6 +794,17 @@ export function VideoPageContent({
               hasPendingApprovalRequest={!!activePendingRequest}
               onOpenApprovalRequest={handleOpenApprovalRequestDialog}
               onOpenApprovalsPanel={handleOpenApprovalsPanel}
+            />
+          )}
+
+          {mode === 'watch' && !embed && !isFullscreenMode && !!video.canComment && (
+            <ReviewDecisionBar
+              videoId={videoId}
+              status={video.status ?? ''}
+              guestName={normalizedGuestName}
+              onDecided={(nextStatus) =>
+                setVideo((prev) => (prev ? { ...prev, status: nextStatus } : prev))
+              }
             />
           )}
 
