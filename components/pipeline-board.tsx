@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Film, Kanban, Lightbulb, List, Loader2, MessageSquare, Plus } from 'lucide-react';
+import { Film, Kanban, Lightbulb, List, Loader2, MessageSquare, Play, Plus } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -162,6 +162,13 @@ export function PipelineBoard({
     setView(v);
     window.localStorage.setItem('kk-pipeline-view', v);
   };
+
+  // Straight to the review player (loads the active/latest cut).
+  const reviewHref = useCallback(
+    (v: PipelineVideo) =>
+      v.projectId && v.currentVersion > 0 ? `/projects/${v.projectId}/videos/${v.id}` : null,
+    []
+  );
 
   const itemHref = useCallback(
     (v: PipelineVideo) =>
@@ -332,6 +339,15 @@ export function PipelineBoard({
                     </span>
                   )}
                   {rowMeta(v)}
+                  {reviewHref(v) && (
+                    <Link
+                      href={reviewHref(v)!}
+                      className="flex-none inline-flex items-center gap-1 h-7 rounded-md border px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                    >
+                      <Play className="h-3 w-3" />
+                      Review
+                    </Link>
+                  )}
                   {canEdit ? (
                     <Select
                       value={stageOf(v.status)}
@@ -414,7 +430,18 @@ export function PipelineBoard({
                   >
                     {v.title}
                   </Link>
-                  <div className="flex items-center gap-3 mt-2">{rowMeta(v)}</div>
+                  <div className="flex items-center gap-3 mt-2">
+                    {rowMeta(v)}
+                    {reviewHref(v) && (
+                      <Link
+                        href={reviewHref(v)!}
+                        className="ml-auto inline-flex items-center gap-1 h-6 rounded-md border px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <Play className="h-3 w-3" />
+                        Review
+                      </Link>
+                    )}
+                  </div>
                 </div>
               ))}
               {stageItems.length === 0 && (

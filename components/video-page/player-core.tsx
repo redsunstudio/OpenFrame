@@ -485,11 +485,16 @@ export const PlayerCore = memo(function PlayerCore({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 lg:hidden"
+                className="h-8 w-8 lg:hidden relative"
                 onClick={() => setIsMobileCommentsOpen(true)}
                 title="Show comments"
               >
                 <MessageSquare className="h-4 w-4" />
+                {commentMarkers.length > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] rounded-full bg-primary px-0.5 text-center text-[9px] font-bold leading-[14px] text-primary-foreground">
+                    {commentMarkers.length > 9 ? '9+' : commentMarkers.length}
+                  </span>
+                )}
               </Button>
             )}
           </div>

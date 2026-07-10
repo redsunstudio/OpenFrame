@@ -280,67 +280,65 @@ export const CommentsPane = memo(function CommentsPane({
             </div>
             <div className="flex items-center gap-1 shrink-0">
               {activePane === 'comments' && (
-                <>
-                  <Button
-                    variant={showResolved ? 'default' : 'ghost'}
-                    size="icon"
-                    className="h-8 w-8"
-                    title={showResolved ? 'Hide resolved comments' : 'Show resolved comments'}
-                    aria-label={showResolved ? 'Hide resolved comments' : 'Show resolved comments'}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleToggleShowResolved();
-                    }}
-                  >
-                    {showResolved ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-                  </Button>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8"
-                        disabled={!activeVersion || isExportingCsv || isExportingPdf}
-                        aria-label="Download comments"
-                        title="Download comments"
-                      >
-                        {isExportingCsv || isExportingPdf ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
-                        ) : (
-                          <Download className="h-4 w-4" />
-                        )}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        disabled={!activeVersion || isGuest || isExportingCsv || isExportingPdf}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleExportComments('csv');
-                        }}
-                        title={
-                          isGuest
-                            ? 'CSV export requires an authenticated account'
-                            : 'Download comments as CSV'
-                        }
-                      >
-                        <Download className="h-4 w-4 mr-2" />
-                        Download CSV
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={!activeVersion || isExportingCsv || isExportingPdf}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleExportComments('pdf');
-                        }}
-                        title="Download comments as PDF"
-                      >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Download PDF
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </>
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      aria-label="Comment options"
+                      title="Comment options"
+                    >
+                      {isExportingCsv || isExportingPdf ? (
+                        <Loader2 className="h-4 w-4 animate-spin" />
+                      ) : (
+                        <MoreVertical className="h-4 w-4" />
+                      )}
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end">
+                    <DropdownMenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleToggleShowResolved();
+                      }}
+                    >
+                      {showResolved ? (
+                        <EyeOff className="h-4 w-4 mr-2" />
+                      ) : (
+                        <Eye className="h-4 w-4 mr-2" />
+                      )}
+                      {showResolved ? 'Hide resolved' : 'Show resolved'}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem
+                      disabled={!activeVersion || isGuest || isExportingCsv || isExportingPdf}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleExportComments('csv');
+                      }}
+                      title={
+                        isGuest
+                          ? 'CSV export requires an authenticated account'
+                          : 'Download comments as CSV'
+                      }
+                    >
+                      <Download className="h-4 w-4 mr-2" />
+                      Download CSV
+                    </DropdownMenuItem>
+                    <DropdownMenuItem
+                      disabled={!activeVersion || isExportingCsv || isExportingPdf}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleExportComments('pdf');
+                      }}
+                      title="Download comments as PDF"
+                    >
+                      <FileText className="h-4 w-4 mr-2" />
+                      Download PDF
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               )}
               <Button
                 variant="ghost"

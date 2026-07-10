@@ -12,7 +12,6 @@ import {
   Loader2,
   Music,
   Play,
-  Trash2,
   Upload,
   User as UserIcon,
 } from 'lucide-react';
@@ -135,7 +134,6 @@ export function VideoItemClient({
   const [assetsLoaded, setAssetsLoaded] = useState(false);
   const [uploads, setUploads] = useState<{ name: string; pct: number; state: string }[]>([]);
   const [uploadingCut, setUploadingCut] = useState<string | null>(null);
-  const [deletingCut, setDeletingCut] = useState<string | null>(null);
   const [uploadingThumb, setUploadingThumb] = useState(false);
   const [archiveOpen, setArchiveOpen] = useState(false);
   const [archiving, setArchiving] = useState(false);
@@ -558,30 +556,6 @@ export function VideoItemClient({
     }
   }
 
-  /** Delete a single cut — its file and review comments go with it. */
-  async function deleteCut(versionId: string, versionNumber: number) {
-    if (
-      !window.confirm(
-        `Delete cut v${versionNumber}? Its file and its review comments are removed. This can't be undone.`
-      )
-    )
-      return;
-    setDeletingCut(versionId);
-    try {
-      const r = await fetch(
-        `/api/projects/${video.projectId}/videos/${video.id}/versions/${versionId}`,
-        { method: 'DELETE' }
-      );
-      if (!r.ok) throw new Error((await r.json())?.error?.message || 'Could not delete the cut');
-      toast.success(`Cut v${versionNumber} deleted`);
-      router.refresh();
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'Could not delete the cut');
-    } finally {
-      setDeletingCut(null);
-    }
-  }
-
   async function archiveVideo() {
     setArchiving(true);
     try {
@@ -957,45 +931,41 @@ export function VideoItemClient({
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent className="space-y-2">
-            {video.versions.length === 0 && (
+          <CardContent>
+            {video.versions.length === 0 ? (
               <p className="text-xs text-muted-foreground">
                 No cuts yet — when the edit lands here it moves straight into review.
               </p>
-            )}
-            {video.versions.map((v) => (
-              <div key={v.id} className="flex items-center gap-3 text-sm">
-                <Film className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="font-medium">
-                  v{v.versionNumber}
-                  {v.versionLabel ? ` — ${v.versionLabel}` : ''}
-                </span>
-                {v.id === activeVersion?.id && (
-                  <span className="text-xs text-muted-foreground">current</span>
-                )}
-                <Button asChild size="sm" variant="outline" className="ml-auto h-7">
-                  <Link href={`/projects/${video.projectId}/videos/${video.id}`}>
-                    Watch & review
-                  </Link>
-                </Button>
-                {canEdit && video.versions.length > 1 && (
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    className="h-7 px-2 text-muted-foreground hover:text-destructive"
-                    title={`Delete cut v${v.versionNumber}`}
-                    disabled={deletingCut === v.id}
-                    onClick={() => void deleteCut(v.id, v.versionNumber)}
-                  >
-                    {deletingCut === v.id ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
+            ) : (
+              (() => {
+                const latest = activeVersion ?? video.versions[0];
+                return (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-3 rounded-lg border bg-background px-3 py-2.5 text-sm">
+                      <Film className="h-4 w-4 text-muted-foreground shrink-0" />
+                      <span className="font-medium truncate">
+                        v{latest.versionNumber}
+                        {latest.versionLabel ? ` — ${latest.versionLabel}` : ''}
+                      </span>
+                      <span className="text-xs text-muted-foreground shrink-0">latest cut</span>
+                      <Button asChild size="sm" className="ml-auto h-8 shrink-0">
+                        <Link href={`/projects/${video.projectId}/videos/${video.id}`}>
+                          <Play className="h-3.5 w-3.5 mr-1.5" />
+                          Review now
+                        </Link>
+                      </Button>
+                    </div>
+                    {video.versions.length > 1 && (
+                      <p className="text-xs text-muted-foreground">
+                        {video.versions.length - 1} earlier cut
+                        {video.versions.length > 2 ? 's' : ''} — switch or delete versions from
+                        the review page.
+                      </p>
                     )}
-                  </Button>
-                )}
-              </div>
-            ))}
+                  </div>
+                );
+              })()
+            )}
           </CardContent>
         </Card>
       )}
