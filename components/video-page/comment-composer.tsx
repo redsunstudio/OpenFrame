@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, type RefObject } from 'react';
+import { memo, useState, type RefObject } from 'react';
 import Link from 'next/link';
 import {
   Image as ImageIcon,
@@ -111,9 +111,14 @@ export const CommentComposer = memo(function CommentComposer({
   pauseVideoForAnnotation,
   assets,
 }: CommentComposerProps) {
+  const [isFocused, setIsFocused] = useState(false);
   const rangeButtonLabel =
     commentRangeStart === null || commentRangeEnd !== null ? 'Set In' : 'Set Out';
   const hasCommentRange = commentRangeStart !== null;
+  // Collapsed at rest so the comment list gets the space; expands while the
+  // reviewer is composing or has anything staged.
+  const isExpanded =
+    isFocused || !!commentText.trim() || !!imageBlob || !!annotationStrokes || hasCommentRange;
   const commentRangeLabel =
     commentRangeStart !== null
       ? commentRangeEnd !== null
@@ -293,67 +298,58 @@ export const CommentComposer = memo(function CommentComposer({
               </div>
             </div>
           )}
-          <div className="mb-2 flex items-center gap-2 flex-wrap">
-            <Button
-              size="sm"
-              variant={hasCommentRange ? 'default' : 'outline'}
-              className="h-7 text-xs"
-              onClick={toggleCommentRangeSelection}
-            >
-              {rangeButtonLabel}
-            </Button>
-            {commentRangeLabel && (
-              <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground tabular-nums">
-                {commentRangeLabel}
-              </span>
-            )}
-            {hasCommentRange && (
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-7 text-xs"
-                onClick={clearCommentRangeSelection}
-              >
-                Clear
-              </Button>
-            )}
-          </div>
-          <div className="flex gap-2 items-stretch">
-            <div className="flex-1 min-w-0">
-              <MentionTextarea
-                placeholder="Add a comment..."
-                value={commentText}
-                onChange={setCommentText}
-                assets={assets}
-                rows={6}
-                className="resize-none text-sm min-h-[180px] w-full"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-                    handleAddComment();
-                  }
-                }}
-                onPaste={(e) => handlePaste(e, false)}
-              />
-            </div>
-            <div className="flex flex-col gap-1 self-end">
-              <Button
-                size="icon"
-                onClick={handleAddComment}
-                disabled={
-                  (!commentText.trim() && !imageBlob && !annotationStrokes) ||
-                  isSubmittingComment ||
-                  isUploadingImage
-                }
-              >
-                {isSubmittingComment || isUploadingImage ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
+          <div
+            onFocusCapture={() => setIsFocused(true)}
+            onBlurCapture={() => setIsFocused(false)}
+          >
+            {isExpanded && (
+              <div className="mb-2 flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant={hasCommentRange ? 'default' : 'outline'}
+                  className="h-7 text-xs"
+                  onClick={toggleCommentRangeSelection}
+                >
+                  {rangeButtonLabel}
+                </Button>
+                {commentRangeLabel && (
+                  <span className="rounded-md border px-2 py-1 text-xs text-muted-foreground tabular-nums">
+                    {commentRangeLabel}
+                  </span>
                 )}
-              </Button>
+                {hasCommentRange && (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-7 text-xs"
+                    onClick={clearCommentRangeSelection}
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+            )}
+            <MentionTextarea
+              placeholder="Add a comment..."
+              value={commentText}
+              onChange={setCommentText}
+              assets={assets}
+              rows={isExpanded ? 5 : 2}
+              className={`resize-none text-sm w-full transition-all ${
+                isExpanded ? 'min-h-[140px]' : 'min-h-0'
+              }`}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+                  handleAddComment();
+                }
+              }}
+              onPaste={(e) => handlePaste(e, false)}
+            />
+            <div className="mt-2 flex items-center gap-1">
               <Button
                 size="icon"
-                variant="outline"
+                variant="ghost"
+                className="h-8 w-8"
                 onClick={startRecording}
                 title="Record voice comment"
               >
@@ -361,7 +357,8 @@ export const CommentComposer = memo(function CommentComposer({
               </Button>
               <Button
                 size="icon"
-                variant="outline"
+                variant="ghost"
+                className="h-8 w-8"
                 onClick={() => imageInputRef.current?.click()}
                 title="Attach Image"
               >
@@ -369,8 +366,8 @@ export const CommentComposer = memo(function CommentComposer({
               </Button>
               <Button
                 size="icon"
-                variant={annotationStrokes ? 'default' : 'outline'}
-                className={annotationStrokes ? 'bg-violet-500 hover:bg-violet-600' : ''}
+                variant={annotationStrokes ? 'default' : 'ghost'}
+                className={`h-8 w-8 ${annotationStrokes ? 'bg-violet-500 hover:bg-violet-600' : ''}`}
                 onClick={() => {
                   if (isAnnotating) return;
                   pauseVideoForAnnotation();
@@ -396,7 +393,8 @@ export const CommentComposer = memo(function CommentComposer({
                   <DropdownMenuTrigger asChild>
                     <Button
                       size="icon"
-                      variant={selectedTagId ? 'default' : 'outline'}
+                      variant={selectedTagId ? 'default' : 'ghost'}
+                      className="h-8 w-8"
                       title="Select tag"
                       style={
                         selectedTagId
@@ -442,9 +440,33 @@ export const CommentComposer = memo(function CommentComposer({
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}
+              <div className="flex-1" />
+              {isExpanded && (
+                <span className="hidden sm:inline text-[11px] text-muted-foreground mr-1">
+                  Cmd+Enter
+                </span>
+              )}
+              <Button
+                size="sm"
+                className="h-8"
+                onClick={handleAddComment}
+                disabled={
+                  (!commentText.trim() && !imageBlob && !annotationStrokes) ||
+                  isSubmittingComment ||
+                  isUploadingImage
+                }
+              >
+                {isSubmittingComment || isUploadingImage ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <>
+                    <Send className="h-4 w-4 mr-1" />
+                    Send
+                  </>
+                )}
+              </Button>
             </div>
           </div>
-          <p className="text-xs text-muted-foreground mt-2">Cmd+Enter to submit</p>
         </>
       )}
     </div>

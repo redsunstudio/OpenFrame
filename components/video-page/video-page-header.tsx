@@ -1,6 +1,6 @@
 'use client';
 
-import { memo } from 'react';
+import { memo, type ReactNode } from 'react';
 import Link from 'next/link';
 import {
   ArrowLeft,
@@ -80,6 +80,7 @@ interface VideoPageHeaderProps {
   hasPendingApprovalRequest: boolean;
   onOpenApprovalRequest: () => void;
   onOpenApprovalsPanel: () => void;
+  reviewActions?: ReactNode;
 }
 
 export const VideoPageHeader = memo(function VideoPageHeader({
@@ -128,6 +129,7 @@ export const VideoPageHeader = memo(function VideoPageHeader({
   hasPendingApprovalRequest,
   onOpenApprovalRequest,
   onOpenApprovalsPanel,
+  reviewActions,
 }: VideoPageHeaderProps) {
   const canManageVideo = canShareVideo || canRequestApproval;
 
@@ -215,47 +217,10 @@ export const VideoPageHeader = memo(function VideoPageHeader({
           />
         </div>
 
+        {reviewActions ? <div className="hidden sm:flex items-center">{reviewActions}</div> : null}
+
         {mode === 'dashboard' && (
           <>
-            {canManageVideo ? (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowVersionDialog(true)}
-                className="hidden sm:inline-flex"
-              >
-                <Plus className="h-4 w-4 mr-1" />
-                New Version
-              </Button>
-            ) : null}
-
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onOpenApprovalsPanel}
-              className="hidden sm:inline-flex"
-            >
-              <ListChecks className="h-4 w-4 mr-1" />
-              Approvals
-              {hasPendingApprovalRequest ? (
-                <Badge variant="default" className="ml-2 hidden xl:inline-flex">
-                  Pending
-                </Badge>
-              ) : null}
-            </Button>
-
-            {versions.length >= 2 && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onOpenCompare}
-                className="hidden sm:inline-flex"
-              >
-                <GitCompareArrows className="h-4 w-4 mr-1" />
-                Compare
-              </Button>
-            )}
-
             {canManageVideo ? (
               <div className="hidden">
                 <VersionActionsDialog
@@ -281,39 +246,62 @@ export const VideoPageHeader = memo(function VideoPageHeader({
               </div>
             ) : null}
 
-            {(canShareVideo || canRequestApproval) && (
-              <div>
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button variant="outline" size="sm" className="w-7 px-0 self-center">
-                      <MoreVertical className="h-4 w-4" />
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end">
-                    {canShareVideo ? (
-                      <DropdownMenuItem asChild>
-                        <Link href={`/projects/${projectId}/videos/${videoId}/share`}>
-                          <Share2 className="h-4 w-4 mr-2" />
-                          Share Video
-                        </Link>
-                      </DropdownMenuItem>
-                    ) : (
-                      <DropdownMenuItem disabled>
+            <div className="relative">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="outline" size="sm" className="w-7 px-0 self-center">
+                    <MoreVertical className="h-4 w-4" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  {canManageVideo ? (
+                    <DropdownMenuItem onSelect={() => setShowVersionDialog(true)}>
+                      <Plus className="h-4 w-4 mr-2" />
+                      New Version
+                    </DropdownMenuItem>
+                  ) : null}
+                  <DropdownMenuItem onSelect={onOpenApprovalsPanel}>
+                    <ListChecks className="h-4 w-4 mr-2" />
+                    Approvals
+                    {hasPendingApprovalRequest ? (
+                      <Badge variant="default" className="ml-auto">
+                        Pending
+                      </Badge>
+                    ) : null}
+                  </DropdownMenuItem>
+                  {versions.length >= 2 && (
+                    <DropdownMenuItem onSelect={onOpenCompare}>
+                      <GitCompareArrows className="h-4 w-4 mr-2" />
+                      Compare Versions
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuSeparator />
+                  {canShareVideo ? (
+                    <DropdownMenuItem asChild>
+                      <Link href={`/projects/${projectId}/videos/${videoId}/share`}>
                         <Share2 className="h-4 w-4 mr-2" />
                         Share Video
-                      </DropdownMenuItem>
-                    )}
-                    <DropdownMenuItem
-                      onSelect={onOpenApprovalRequest}
-                      disabled={!canRequestApproval}
-                    >
-                      <ShieldCheck className="h-4 w-4 mr-2" />
-                      Request Approval
+                      </Link>
                     </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              </div>
-            )}
+                  ) : (
+                    <DropdownMenuItem disabled>
+                      <Share2 className="h-4 w-4 mr-2" />
+                      Share Video
+                    </DropdownMenuItem>
+                  )}
+                  <DropdownMenuItem onSelect={onOpenApprovalRequest} disabled={!canRequestApproval}>
+                    <ShieldCheck className="h-4 w-4 mr-2" />
+                    Request Approval
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+              {hasPendingApprovalRequest ? (
+                <span
+                  className="absolute -top-0.5 -right-0.5 h-2 w-2 rounded-full bg-amber-500"
+                  title="Pending approval request"
+                />
+              ) : null}
+            </div>
           </>
         )}
       </div>

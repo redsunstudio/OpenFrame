@@ -4,10 +4,11 @@ import { memo, useState, type ReactNode, type RefObject } from 'react';
 import {
   ArrowUpRight,
   CheckCircle2,
-  ChevronDown,
   Circle,
   Clock,
   Download,
+  Eye,
+  EyeOff,
   FileText,
   FolderOpen,
   Image as ImageIcon,
@@ -249,7 +250,7 @@ export const CommentsPane = memo(function CommentsPane({
             <p className="text-sm font-medium text-primary">Drop image to attach</p>
           </div>
         )}
-        <div className="shrink-0 p-4 border-b lg:cursor-default space-y-2">
+        <div className="shrink-0 p-4 border-b lg:cursor-default">
           <div className="flex items-center justify-between gap-2">
             <div className="flex items-center gap-1 min-w-0 overflow-x-auto">
               <Button
@@ -277,78 +278,80 @@ export const CommentsPane = memo(function CommentsPane({
                 </Badge>
               </Button>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 lg:hidden shrink-0"
-              onClick={() => setIsMobileCommentsOpen(false)}
-            >
-              <X className="h-4 w-4" />
-            </Button>
-          </div>
-
-          {activePane === 'comments' && (
-            <div className="flex w-full items-center justify-end gap-2 flex-wrap">
-              <Button
-                variant={showResolved ? 'default' : 'outline'}
-                size="sm"
-                className="h-8"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handleToggleShowResolved();
-                }}
-              >
-                Resolved
-              </Button>
-              <DropdownMenu>
-                <DropdownMenuTrigger asChild>
+            <div className="flex items-center gap-1 shrink-0">
+              {activePane === 'comments' && (
+                <>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="h-8 px-2"
-                    disabled={!activeVersion || isExportingCsv || isExportingPdf}
-                    aria-label="Download comments"
-                    title="Download comments"
+                    variant={showResolved ? 'default' : 'ghost'}
+                    size="icon"
+                    className="h-8 w-8"
+                    title={showResolved ? 'Hide resolved comments' : 'Show resolved comments'}
+                    aria-label={showResolved ? 'Hide resolved comments' : 'Show resolved comments'}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleToggleShowResolved();
+                    }}
                   >
-                    {isExportingCsv || isExportingPdf ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <Download className="h-4 w-4" />
-                    )}
-                    <ChevronDown className="h-4 w-4 ml-0.5" />
+                    {showResolved ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
                   </Button>
-                </DropdownMenuTrigger>
-                <DropdownMenuContent align="start">
-                  <DropdownMenuItem
-                    disabled={!activeVersion || isGuest || isExportingCsv || isExportingPdf}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExportComments('csv');
-                    }}
-                    title={
-                      isGuest
-                        ? 'CSV export requires an authenticated account'
-                        : 'Download comments as CSV'
-                    }
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download CSV
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    disabled={!activeVersion || isExportingCsv || isExportingPdf}
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleExportComments('pdf');
-                    }}
-                    title="Download comments as PDF"
-                  >
-                    <FileText className="h-4 w-4 mr-2" />
-                    Download PDF
-                  </DropdownMenuItem>
-                </DropdownMenuContent>
-              </DropdownMenu>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                        disabled={!activeVersion || isExportingCsv || isExportingPdf}
+                        aria-label="Download comments"
+                        title="Download comments"
+                      >
+                        {isExportingCsv || isExportingPdf ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <Download className="h-4 w-4" />
+                        )}
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem
+                        disabled={!activeVersion || isGuest || isExportingCsv || isExportingPdf}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportComments('csv');
+                        }}
+                        title={
+                          isGuest
+                            ? 'CSV export requires an authenticated account'
+                            : 'Download comments as CSV'
+                        }
+                      >
+                        <Download className="h-4 w-4 mr-2" />
+                        Download CSV
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={!activeVersion || isExportingCsv || isExportingPdf}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleExportComments('pdf');
+                        }}
+                        title="Download comments as PDF"
+                      >
+                        <FileText className="h-4 w-4 mr-2" />
+                        Download PDF
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </>
+              )}
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 lg:hidden"
+                onClick={() => setIsMobileCommentsOpen(false)}
+              >
+                <X className="h-4 w-4" />
+              </Button>
             </div>
-          )}
+          </div>
         </div>
 
         <div className="flex-1 overflow-y-auto">

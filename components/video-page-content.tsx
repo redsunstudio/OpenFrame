@@ -647,6 +647,12 @@ export function VideoPageContent({
     }
   }, []);
 
+  const canDecideReview = mode === 'dashboard' || !!video?.canComment;
+  const handleReviewDecided = useCallback(
+    (nextStatus: string) => setVideo((prev) => (prev ? { ...prev, status: nextStatus } : prev)),
+    [setVideo]
+  );
+
   const headerActions: VideoPageHeaderActions = useMemo(
     () => ({
       onVersionSelect: handleVersionSelect,
@@ -794,21 +800,30 @@ export function VideoPageContent({
               hasPendingApprovalRequest={!!activePendingRequest}
               onOpenApprovalRequest={handleOpenApprovalRequestDialog}
               onOpenApprovalsPanel={handleOpenApprovalsPanel}
+              reviewActions={
+                canDecideReview ? (
+                  <ReviewDecisionBar
+                    compact
+                    videoId={videoId}
+                    status={video.status ?? ''}
+                    guestName={normalizedGuestName}
+                    onDecided={handleReviewDecided}
+                  />
+                ) : null
+              }
             />
           )}
 
-          {!embed &&
-            !isFullscreenMode &&
-            (mode === 'dashboard' || !!video.canComment) && (
+          {!embed && !isFullscreenMode && canDecideReview && (
+            <div className="sm:hidden">
               <ReviewDecisionBar
                 videoId={videoId}
                 status={video.status ?? ''}
                 guestName={normalizedGuestName}
-                onDecided={(nextStatus) =>
-                  setVideo((prev) => (prev ? { ...prev, status: nextStatus } : prev))
-                }
+                onDecided={handleReviewDecided}
               />
-            )}
+            </div>
+          )}
 
           <PlayerCore
             activeVersionId={activeVersionId}
