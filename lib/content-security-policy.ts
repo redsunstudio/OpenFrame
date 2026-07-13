@@ -62,6 +62,8 @@ export function buildContentSecurityPolicy(): string {
     ...(isDev ? ['ws://localhost:* wss://localhost:*'] : []),
   ].filter(Boolean);
 
+  // Storage origins: inline image/thumbnail serving 302-redirects to presigned
+  // storage URLs (same OOM rationale as media-src below) and CSP checks every hop.
   const imgSrcParts = [
     "'self'",
     'data:',
@@ -71,6 +73,7 @@ export function buildContentSecurityPolicy(): string {
     'https://images.unsplash.com',
     'https://vz-thumbnail.b-cdn.net',
     cdnOrigin,
+    ...resolveR2ConnectOrigins(),
   ].filter(Boolean);
 
   // Storage origins required: video playback 302-redirects to presigned storage

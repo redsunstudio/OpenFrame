@@ -1,15 +1,36 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { apiErrors } from '@/lib/api-response';
 import { getPostReviewByToken, resolveReviewMedia, reviewAssetKey } from '@/lib/post-review';
-import { proxyR2MediaObject } from '@/lib/r2-media-proxy';
+import { createPresignedInlineGetUrl } from '@/lib/r2';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
   params: Promise<{ token: string; assetId: string }>;
 }
 
-// GET — token-authed media for the public review page (same-origin, so the
-// app CSP applies cleanly; supports range for video playback).
+const CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  webp: 'image/webp',
+  gif: 'image/gif',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
+  m4v: 'video/mp4',
+  pdf: 'application/pdf',
+};
+
+function contentTypeFromKey(key: string): string {
+  const ext = key.split('.').pop()?.toLowerCase() || '';
+  return CONTENT_TYPE_BY_EXTENSION[ext] || 'application/octet-stream';
+}
+
+// GET — token-authed media for the public review page. Auth + presign only:
+// the bytes stream browser<->storage via a 302 to a presigned inline URL
+// (piping media through the app OOM'd the container). The page CSP allows
+// the storage origins in img-src/media-src; the PDF link is a top-level
+// navigation, which CSP does not gate.
 export async function GET(request: NextRequest, { params }: RouteParams) {
   try {
     const { token, assetId } = await params;
@@ -22,13 +43,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     const key = asset ? reviewAssetKey(asset) : null;
     if (!key) return apiErrors.notFound('Media');
 
-    return proxyR2MediaObject({
-      request,
-      key,
-      fallbackContentType: 'application/octet-stream',
-      cacheControl: 'private, max-age=300',
-      extraHeaders: { 'X-Content-Type-Options': 'nosniff' },
-      internalErrorMessage: 'Failed to load media',
+    const presigned = await createPresignedInlineGetUrl(key, contentTypeFromKey(key));
+    return NextResponse.redirect(presigned, {
+      status: 302,
+      headers: { 'Cache-Control': 'private, no-store' },
     });
   } catch (error) {
     logError('review media failed:', error);

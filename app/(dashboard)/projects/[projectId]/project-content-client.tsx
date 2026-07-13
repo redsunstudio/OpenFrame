@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -17,22 +17,11 @@ import {
   Lock,
   Download,
   Loader2,
-  Trash2,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import { PipelineBoard } from '@/components/pipeline-board';
 import type { DirectUploadProvider } from '@/components/video-page/types';
@@ -82,13 +71,11 @@ export function ProjectContentClient({
   project,
   projectId,
   videos,
-  allVideoIds,
   canEdit,
   canDownloadProject,
   isOwner,
   totalPages,
   currentPage,
-  pageSize,
   directUploadsEnabled,
   directUploadProvider,
 }: ProjectContentClientProps) {
@@ -96,24 +83,11 @@ export function ProjectContentClient({
   const searchParams = useSearchParams();
   const sortOrder = searchParams.get('sort') || 'desc';
   const [localVideos, setLocalVideos] = useState<SerializedVideo[]>(videos);
-  const [selectedVideoIds, setSelectedVideoIds] = useState<string[]>([]);
-  const [selectionMode, setSelectionMode] = useState(false);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isDeletingSelected, setIsDeletingSelected] = useState(false);
-  const [showDeleteSelectedDialog, setShowDeleteSelectedDialog] = useState(false);
-
-  const canSelectVideos = canDownloadProject || canEdit;
 
   useEffect(() => {
     setLocalVideos(videos);
   }, [videos]);
-
-  const selectedCount = selectedVideoIds.length;
-  const pageVideoIds = useMemo(() => localVideos.map((video) => video.id), [localVideos]);
-  const allSelected = useMemo(
-    () => pageVideoIds.length > 0 && pageVideoIds.every((id) => selectedVideoIds.includes(id)),
-    [pageVideoIds, selectedVideoIds]
-  );
 
   const createQueryString = useCallback(
     (name: string, value: string) => {
@@ -128,46 +102,6 @@ export function ProjectContentClient({
     },
     [searchParams]
   );
-
-  const handleVideoDeleted = useCallback((videoId: string) => {
-    setLocalVideos((prev) => prev.filter((video) => video.id !== videoId));
-    setSelectedVideoIds((prev) => prev.filter((id) => id !== videoId));
-  }, []);
-
-  const toggleVideoSelection = useCallback((videoId: string, selected: boolean) => {
-    setSelectedVideoIds((prev) => {
-      if (selected) {
-        if (prev.includes(videoId)) return prev;
-        return [...prev, videoId];
-      }
-      return prev.filter((id) => id !== videoId);
-    });
-  }, []);
-
-  const handleSelectAll = useCallback(() => {
-    // Scope selection to the current page only. Selecting every video across
-    // every page from a single button is too easy to trigger by accident when
-    // the user only meant the videos they can see.
-    setSelectedVideoIds((prev) => {
-      const next = new Set(prev);
-      pageVideoIds.forEach((id) => next.add(id));
-      return Array.from(next);
-    });
-  }, [pageVideoIds]);
-
-  const handleDeselectAll = useCallback(() => {
-    const pageIds = new Set(pageVideoIds);
-    setSelectedVideoIds((prev) => prev.filter((id) => !pageIds.has(id)));
-  }, [pageVideoIds]);
-
-  const handleClearSelection = useCallback(() => {
-    setSelectedVideoIds([]);
-    setSelectionMode(false);
-  }, []);
-
-  const handleEnterSelectionMode = useCallback(() => {
-    setSelectionMode(true);
-  }, []);
 
   const startProjectDownload = useCallback(
     async (videoIds?: string[]) => {
@@ -209,62 +143,6 @@ export function ProjectContentClient({
     },
     [canDownloadProject, isDownloading, projectId]
   );
-
-  const handleDeleteSelected = useCallback(async () => {
-    if (!canEdit || selectedCount === 0 || isDeletingSelected) return;
-
-    setIsDeletingSelected(true);
-    try {
-      const response = await fetch(`/api/projects/${projectId}/videos/bulk-delete`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ videoIds: selectedVideoIds }),
-      });
-      const body = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        const message =
-          typeof body?.error === 'string' ? body.error : 'Failed to delete selected videos';
-        toast.error(message);
-        return;
-      }
-
-      const deletedIds = new Set(selectedVideoIds);
-      setLocalVideos((prev) => prev.filter((video) => !deletedIds.has(video.id)));
-      setSelectedVideoIds([]);
-      setSelectionMode(false);
-      setShowDeleteSelectedDialog(false);
-      toast.success(
-        typeof body?.data?.message === 'string' ? body.data.message : 'Selected videos deleted'
-      );
-
-      // The current page may now be out of range (e.g. we deleted every video
-      // on it). Clamp to the last valid page so the refresh lands on a page
-      // that still has videos instead of showing "No videos yet".
-      const remainingTotal = allVideoIds.filter((id) => !deletedIds.has(id)).length;
-      const newTotalPages = Math.max(1, Math.ceil(remainingTotal / pageSize));
-      if (currentPage > newTotalPages) {
-        router.push(`?${createQueryString('page', newTotalPages.toString())}`);
-      } else {
-        router.refresh();
-      }
-    } catch {
-      toast.error('Failed to delete selected videos');
-    } finally {
-      setIsDeletingSelected(false);
-    }
-  }, [
-    allVideoIds,
-    canEdit,
-    createQueryString,
-    currentPage,
-    isDeletingSelected,
-    pageSize,
-    projectId,
-    router,
-    selectedCount,
-    selectedVideoIds,
-  ]);
 
   return (
     <>
@@ -327,7 +205,7 @@ export function ProjectContentClient({
               </>
             )}
           </Button>
-          {canDownloadProject && localVideos.length > 0 && !selectionMode && (
+          {canDownloadProject && localVideos.length > 0 && (
             <Button
               variant="outline"
               size="sm"
@@ -376,63 +254,6 @@ export function ProjectContentClient({
           )}
         </div>
       </div>
-
-      {selectionMode && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
-          <span className="text-sm font-medium">Selection mode</span>
-          <span className="text-sm text-muted-foreground">
-            {selectedCount > 0 ? `${selectedCount} selected` : 'None selected'}
-          </span>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={allSelected ? handleDeselectAll : handleSelectAll}
-            >
-              {totalPages > 1
-                ? allSelected
-                  ? 'Deselect page'
-                  : 'Select page'
-                : allSelected
-                  ? 'Deselect all'
-                  : 'Select all'}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={handleClearSelection}>
-              Cancel
-            </Button>
-            {canDownloadProject && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => startProjectDownload(selectedVideoIds)}
-                disabled={isDownloading || selectedCount === 0}
-              >
-                {isDownloading ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Download className="h-4 w-4 mr-2" />
-                )}
-                Download selected
-              </Button>
-            )}
-            {canEdit && (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => setShowDeleteSelectedDialog(true)}
-                disabled={selectedCount === 0 || isDeletingSelected}
-              >
-                {isDeletingSelected ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Trash2 className="h-4 w-4 mr-2" />
-                )}
-                Delete selected
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
 
       <PipelineBoard projectId={projectId} videos={localVideos} canEdit={canEdit} />
 
@@ -487,34 +308,6 @@ export function ProjectContentClient({
           </Button>
         </div>
       )}
-
-      <AlertDialog open={showDeleteSelectedDialog} onOpenChange={setShowDeleteSelectedDialog}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {selectedCount} video{selectedCount === 1 ? '' : 's'}?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              This will permanently delete the selected videos, all of their versions, comments, and
-              stored media from Bunny and Cloudflare R2. This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isDeletingSelected}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(event) => {
-                event.preventDefault();
-                void handleDeleteSelected();
-              }}
-              disabled={isDeletingSelected || selectedCount === 0}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isDeletingSelected && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              Delete selected
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </>
   );
 }

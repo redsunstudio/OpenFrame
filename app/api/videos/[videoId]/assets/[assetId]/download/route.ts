@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createPresignedFileGetUrl } from '@/lib/r2';
+import { createPresignedFileGetUrl, createPresignedInlineGetUrl } from '@/lib/r2';
 import { VideoAssetProvider } from '@prisma/client';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { rateLimit } from '@/lib/rate-limit';
-import { proxyR2MediaObject } from '@/lib/r2-media-proxy';
-import { fetchWithTimeout, resolveBunnyDownloadSource } from '@/lib/bunny-download';
+import { resolveBunnyDownloadSource } from '@/lib/bunny-download';
 import { db } from '@/lib/db';
 import {
   extractImageFileNameFromProxyUrl,
@@ -26,27 +25,7 @@ const IMAGE_CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
   gif: 'image/gif',
 };
 
-const AUDIO_CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
-  webm: 'audio/webm',
-  ogg: 'audio/ogg',
-  opus: 'audio/ogg',
-  mp4: 'audio/mp4',
-  m4a: 'audio/mp4',
-  mpeg: 'audio/mpeg',
-  mp3: 'audio/mpeg',
-  wav: 'audio/wav',
-};
 const BUNNY_ALLOWED_QUALITIES = new Set([2160, 1440, 1080, 720, 480, 360, 240]);
-
-const VIDEO_CONTENT_TYPE_BY_EXTENSION: Record<string, string> = {
-  mp4: 'video/mp4',
-  webm: 'video/webm',
-  ogg: 'video/ogg',
-  mov: 'video/quicktime',
-  m4v: 'video/mp4',
-  mkv: 'video/x-matroska',
-  avi: 'video/x-msvideo',
-};
 
 function sanitizeFileName(value: string): string {
   const sanitized = value
@@ -54,21 +33,6 @@ function sanitizeFileName(value: string): string {
     .replace(/\s+/g, ' ')
     .trim();
   return sanitized.length > 0 ? sanitized : 'asset';
-}
-
-function toAsciiFileName(value: string): string {
-  const normalized = value
-    .normalize('NFKD')
-    .replace(/[^\x20-\x7E]/g, '')
-    .replace(/\s+/g, ' ')
-    .trim();
-  return normalized.length > 0 ? normalized : 'asset';
-}
-
-function buildContentDisposition(fileNameWithExt: string): string {
-  const asciiFallback = toAsciiFileName(fileNameWithExt).replace(/["\\]/g, '_');
-  const encoded = encodeURIComponent(fileNameWithExt);
-  return `attachment; filename="${asciiFallback}"; filename*=UTF-8''${encoded}`;
 }
 
 function imageContentTypeFromFileName(fileName: string): string {
@@ -115,24 +79,20 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         ? sanitizeFileName(asset.displayName)
         : `${sanitizeFileName(asset.displayName)}${ext}`;
 
-      // Redirect to a short-lived presigned URL so big files stream straight
-      // from object storage instead of through the app server. Inline viewers
-      // (thumbnail <img>) opt out with ?inline=1 and get the proxied bytes.
-      if (request.nextUrl.searchParams.get('inline') !== '1') {
-        const presigned = await createPresignedFileGetUrl(key, downloadName);
-        return NextResponse.redirect(presigned, 302);
+      // Redirect to a short-lived presigned URL so bytes stream straight from
+      // object storage instead of through the app server (piping OOM'd the
+      // container). Inline viewers (thumbnail <img>) get an inline-disposition
+      // presign via ?inline=1 — img-src CSP includes the storage origins.
+      if (request.nextUrl.searchParams.get('inline') === '1') {
+        const presigned = await createPresignedInlineGetUrl(key, imageContentTypeFromFileName(key));
+        return NextResponse.redirect(presigned, {
+          status: 302,
+          headers: { 'Cache-Control': 'private, no-store' },
+        });
       }
 
-      return proxyR2MediaObject({
-        request,
-        key,
-        fallbackContentType: 'application/octet-stream',
-        cacheControl: 'private, no-store',
-        extraHeaders: {
-          'X-Content-Type-Options': 'nosniff',
-        },
-        internalErrorMessage: 'Failed to retrieve file',
-      });
+      const presigned = await createPresignedFileGetUrl(key, downloadName);
+      return NextResponse.redirect(presigned, 302);
     }
 
     if (asset.provider === VideoAssetProvider.R2_IMAGE) {
@@ -141,20 +101,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const key = `images/${fileName}`;
       const extension = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')) : '.png';
       const downloadName = `${sanitizeFileName(asset.displayName)}${extension}`;
-      const contentDisposition = buildContentDisposition(downloadName);
 
-      return proxyR2MediaObject({
-        request,
-        key,
-        fallbackContentType: imageContentTypeFromFileName(fileName),
-        cacheControl: 'private, no-store',
-        extraHeaders: {
-          'Content-Disposition': contentDisposition,
-          'X-Content-Type-Options': 'nosniff',
-          'Content-Security-Policy': "default-src 'none'; sandbox",
-        },
-        internalErrorMessage: 'Failed to retrieve image',
-      });
+      const presigned = await createPresignedFileGetUrl(key, downloadName);
+      return NextResponse.redirect(presigned, 302);
     }
 
     if (asset.provider === VideoAssetProvider.R2_AUDIO) {
@@ -163,21 +112,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const key = `voice/${fileName}`;
       const ext = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')) : '.webm';
       const downloadName = `${sanitizeFileName(asset.displayName)}${ext}`;
-      const contentDisposition = buildContentDisposition(downloadName);
-      const extKey = ext.replace('.', '');
-      const contentType = AUDIO_CONTENT_TYPE_BY_EXTENSION[extKey] || 'audio/webm';
 
-      return proxyR2MediaObject({
-        request,
-        key,
-        fallbackContentType: contentType,
-        cacheControl: 'private, no-store',
-        extraHeaders: {
-          'Content-Disposition': contentDisposition,
-          'X-Content-Type-Options': 'nosniff',
-        },
-        internalErrorMessage: 'Failed to retrieve audio',
-      });
+      const presigned = await createPresignedFileGetUrl(key, downloadName);
+      return NextResponse.redirect(presigned, 302);
     }
 
     if (asset.provider === VideoAssetProvider.R2_VIDEO) {
@@ -186,21 +123,10 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       const key = buildVideoObjectKey(fileName);
       const ext = fileName.includes('.') ? fileName.slice(fileName.lastIndexOf('.')) : '.mp4';
       const downloadName = `${sanitizeFileName(asset.displayName)}${ext}`;
-      const contentDisposition = buildContentDisposition(downloadName);
-      const extKey = ext.replace('.', '');
-      const contentType = VIDEO_CONTENT_TYPE_BY_EXTENSION[extKey] || 'video/mp4';
 
-      return proxyR2MediaObject({
-        request,
-        key,
-        fallbackContentType: contentType,
-        cacheControl: 'private, no-store',
-        extraHeaders: {
-          'Content-Disposition': contentDisposition,
-          'X-Content-Type-Options': 'nosniff',
-        },
-        internalErrorMessage: 'Failed to retrieve video',
-      });
+      // Raw footage runs to multiple GB — never pipe it through the app.
+      const presigned = await createPresignedFileGetUrl(key, downloadName);
+      return NextResponse.redirect(presigned, 302);
     }
 
     const sourceParam = request.nextUrl.searchParams.get('source');
@@ -253,26 +179,9 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       return withCacheControl(response, 'private, no-store');
     }
 
-    const upstream = await fetchWithTimeout(source.url, { cache: 'no-store' });
-    if (!upstream.ok || !upstream.body) {
-      return apiErrors.notFound('Download file');
-    }
-
-    const extension = source.sourceType === 'compressed' ? '.mp4' : '';
-    const filename = `${sanitizeFileName(asset.displayName)}${extension}`;
-    const response = new Response(upstream.body, {
-      status: 200,
-      headers: {
-        'Content-Type': upstream.headers.get('content-type') || 'application/octet-stream',
-        'Content-Disposition': buildContentDisposition(filename),
-        'Cache-Control': 'private, no-store',
-        'X-Content-Type-Options': 'nosniff',
-      },
-    });
-    const contentLength = upstream.headers.get('content-length');
-    if (contentLength) response.headers.set('Content-Length', contentLength);
-
-    return withCacheControl(response, 'private, no-store');
+    // Redirect to the Bunny source instead of proxying the body through the
+    // app (same treatment as /api/versions/[versionId]/download).
+    return NextResponse.redirect(source.url, 302);
   } catch (error) {
     logError('Error downloading asset:', error);
     return apiErrors.internalError('Failed to download asset');
