@@ -13,6 +13,7 @@ import io
 import os
 import subprocess
 import sys
+import time
 
 import boto3
 
@@ -33,15 +34,28 @@ def s3():
 
 
 def dump_database() -> bytes:
-    out = subprocess.run(
-        ["pg_dump", "--no-owner", "--no-privileges", os.environ["DATABASE_URL"]],
-        capture_output=True,
-        check=True,
-    )
-    buf = io.BytesIO()
-    with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
-        gz.write(out.stdout)
-    return buf.getvalue()
+    # Retry: Railway's private-network DNS (postgres.railway.internal) is not
+    # ready for the first seconds after a cron container boots, and pg_dump's
+    # stderr must be surfaced or failures are undiagnosable from the cron logs.
+    attempts = 5
+    for attempt in range(1, attempts + 1):
+        out = subprocess.run(
+            ["pg_dump", "--no-owner", "--no-privileges", os.environ["DATABASE_URL"]],
+            capture_output=True,
+        )
+        if out.returncode == 0:
+            buf = io.BytesIO()
+            with gzip.GzipFile(fileobj=buf, mode="wb") as gz:
+                gz.write(out.stdout)
+            return buf.getvalue()
+        print(
+            f"pg_dump attempt {attempt}/{attempts} failed (rc {out.returncode}): "
+            f"{out.stderr.decode(errors='replace').strip()}",
+            file=sys.stderr,
+        )
+        if attempt < attempts:
+            time.sleep(10 * attempt)
+    raise RuntimeError(f"pg_dump failed after {attempts} attempts")
 
 
 def main() -> int:
