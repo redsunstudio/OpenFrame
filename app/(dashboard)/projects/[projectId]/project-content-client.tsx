@@ -33,7 +33,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
-import { VideoCard } from '@/components/video-card';
 import { VideoDragDropUploader } from '@/components/video-drag-drop-uploader';
 import { PipelineBoard } from '@/components/pipeline-board';
 import type { DirectUploadProvider } from '@/components/video-page/types';
@@ -437,27 +436,9 @@ export function ProjectContentClient({
 
       <PipelineBoard projectId={projectId} videos={localVideos} canEdit={canEdit} />
 
-      {/* Videos Grid — cuts only; idea-stage items live on the pipeline board */}
-      {localVideos.filter((v) => v.currentVersion > 0).length > 0 ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {localVideos
-            .filter((v) => v.currentVersion > 0)
-            .map((video) => (
-              <VideoCard
-                key={video.id}
-                video={video}
-                projectId={projectId}
-                canManage={canEdit}
-                canSelect={canSelectVideos}
-                selectionMode={selectionMode}
-                selected={selectedVideoIds.includes(video.id)}
-                onEnterSelectionMode={handleEnterSelectionMode}
-                onSelectedChange={(selected) => toggleVideoSelection(video.id, selected)}
-                onDeleted={handleVideoDeleted}
-              />
-            ))}
-        </div>
-      ) : (
+      {/* Cuts live on the pipeline board rows; the duplicate card grid below it
+          was noise (John 2026-07-13) and its per-card thumbnail loads added no value. */}
+      {localVideos.length === 0 && (
         <Card className="border-dashed">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Play className="h-12 w-12 text-muted-foreground mb-4" />

@@ -336,6 +336,24 @@ export async function createPresignedFileGetUrl(
   return getSignedUrl(getOrCreateR2PresignClient(), command, { expiresIn: expiresInSeconds });
 }
 
+export async function createPresignedInlineGetUrl(
+  objectKey: string,
+  contentType: string,
+  expiresInSeconds: number = 43200
+): Promise<string> {
+  // Inline (no attachment disposition) so <video>/<img> elements play it directly.
+  // Long expiry: review sessions replay/seek for hours, and bytes must keep flowing
+  // browser<->storage without passing through this app (piping large videos OOM'd
+  // the container).
+  const command = new GetObjectCommand({
+    Bucket: R2_BUCKET_NAME,
+    Key: objectKey,
+    ResponseContentType: contentType,
+    ResponseContentDisposition: 'inline',
+  });
+  return getSignedUrl(getOrCreateR2PresignClient(), command, { expiresIn: expiresInSeconds });
+}
+
 export async function getR2FileObjectMetadata(key: string): Promise<{
   contentLength: bigint;
   contentType: string | undefined;

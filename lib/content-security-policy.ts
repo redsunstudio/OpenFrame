@@ -73,7 +73,11 @@ export function buildContentSecurityPolicy(): string {
     cdnOrigin,
   ].filter(Boolean);
 
-  const mediaSrcParts = ["'self'", 'blob:', cdnOrigin].filter(Boolean);
+  // Storage origins required: video playback 302-redirects to presigned storage
+  // URLs (piping the bytes through the app OOM'd it), and CSP checks every hop.
+  const mediaSrcParts = ["'self'", 'blob:', cdnOrigin, ...resolveR2ConnectOrigins()].filter(
+    Boolean
+  );
 
   return [
     "default-src 'self'",

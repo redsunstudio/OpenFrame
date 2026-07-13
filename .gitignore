@@ -52,3 +52,7 @@ OPTIMIZATIONS.md
 # Claude doesn't respect AGENTS.md and I don't want double AGENTS.md files on the repo.
 CLAUDE.md
 .github/prompts/
+
+# exFAT/AppleDouble junk
+._*
+**/._*

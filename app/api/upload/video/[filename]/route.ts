@@ -1,10 +1,10 @@
-import { NextRequest } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { auth, checkProjectAccess } from '@/lib/auth';
 import { db } from '@/lib/db';
 import { validateShareLinkAccess } from '@/lib/share-links';
 import { getShareSessionFromRequest } from '@/lib/share-session';
 import { apiErrors } from '@/lib/api-response';
-import { proxyR2MediaObject } from '@/lib/r2-media-proxy';
+import { createPresignedInlineGetUrl } from '@/lib/r2';
 import { buildVideoObjectKey, SAFE_VIDEO_BASENAME } from '@/lib/video-upload-validation';
 import { logError } from '@/lib/logger';
 
@@ -109,12 +109,14 @@ export async function GET(
     }
 
     const key = buildVideoObjectKey(filename);
-    return proxyR2MediaObject({
-      request,
-      key,
-      fallbackContentType: getVideoContentType(filename),
-      cacheControl: 'private, max-age=3600',
-      internalErrorMessage: 'Failed to load video',
+    // Redirect playback to a presigned storage URL instead of piping the bytes
+    // through this app: concurrent multi-hundred-MB streams OOM'd the container
+    // (RangeError at allocUnsafe -> every route 502s). Range requests go straight
+    // to storage; this route only ever does auth + presign now.
+    const presigned = await createPresignedInlineGetUrl(key, getVideoContentType(filename));
+    return NextResponse.redirect(presigned, {
+      status: 302,
+      headers: { 'Cache-Control': 'private, no-store' },
     });
   } catch (error) {
     logError('Error serving video upload:', error);
