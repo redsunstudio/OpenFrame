@@ -1,7 +1,14 @@
 import { captureVideoThumbnail } from '@/lib/client/video-thumbnail';
+import {
+  MULTIPART_PART_BYTES,
+  MULTIPART_THRESHOLD_BYTES,
+  uploadPartsWithProgress,
+} from '@/lib/client/r2-video-upload';
 
 export type R2AssetVideoInitResponse = {
-  presignedPutUrl: string;
+  presignedPutUrl: string | null;
+  uploadId: string | null;
+  partUrls: string[] | null;
   objectKey: string;
   proxyUrl: string;
   uploadToken: string;
@@ -57,7 +64,8 @@ function uploadBytesWithProgress(
 
 export async function initR2AssetVideoUpload(
   videoId: string,
-  file: File
+  file: File,
+  partCount?: number
 ): Promise<R2AssetVideoInitResponse> {
   const initRes = await fetch(`/api/videos/${videoId}/assets/r2-init`, {
     method: 'POST',
@@ -66,6 +74,7 @@ export async function initR2AssetVideoUpload(
       fileName: file.name,
       contentType: file.type,
       sizeBytes: file.size,
+      ...(partCount && partCount > 1 ? { partCount } : {}),
     }),
   });
 
@@ -110,7 +119,9 @@ export async function uploadAssetVideoToR2(
   file: File,
   options?: { onProgress?: UploadProgressHandler }
 ): Promise<R2AssetVideoUploadResult> {
-  const init = await initR2AssetVideoUpload(videoId, file);
+  const useMultipart = file.size > MULTIPART_THRESHOLD_BYTES;
+  const partCount = useMultipart ? Math.ceil(file.size / MULTIPART_PART_BYTES) : 0;
+  const init = await initR2AssetVideoUpload(videoId, file, useMultipart ? partCount : undefined);
 
   const cleanupInput = {
     objectKey: init.objectKey,
@@ -119,12 +130,32 @@ export async function uploadAssetVideoToR2(
   };
 
   try {
-    await uploadBytesWithProgress(
-      init.presignedPutUrl,
-      file,
-      init.contentType,
-      options?.onProgress
-    );
+    if (init.uploadId && init.partUrls && init.partUrls.length > 0) {
+      await uploadPartsWithProgress(file, init.partUrls, options?.onProgress);
+      const completeRes = await fetch(`/api/videos/${videoId}/assets/r2-init`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          objectKey: init.objectKey,
+          uploadId: init.uploadId,
+          uploadToken: init.uploadToken,
+        }),
+      });
+      if (!completeRes.ok) {
+        const payload = (await completeRes.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(payload?.error || 'Failed to assemble the uploaded parts');
+      }
+    } else {
+      if (!init.presignedPutUrl) {
+        throw new Error('Upload initialization returned no destination URL');
+      }
+      await uploadBytesWithProgress(
+        init.presignedPutUrl,
+        file,
+        init.contentType,
+        options?.onProgress
+      );
+    }
   } catch (error) {
     await cleanupPendingR2AssetVideoUpload(videoId, cleanupInput);
     throw error;

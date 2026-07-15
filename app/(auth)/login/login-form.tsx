@@ -107,7 +107,13 @@ function LoginFormInner({
         setError('That code did not work — check it or request a new one.');
         return;
       }
-      router.push(getSafeCallbackUrl(result?.url || callbackUrl));
+      // Invited users land on the shelf with a welcome toast instead of a
+      // cold redirect — their invitation was auto-accepted on this sign-in.
+      if (inviteTarget) {
+        router.push(`/workspaces?joined=${encodeURIComponent(inviteTarget)}`);
+      } else {
+        router.push(getSafeCallbackUrl(result?.url || callbackUrl));
+      }
       router.refresh();
     } catch {
       setError('Something went wrong. Please try again.');
@@ -167,7 +173,10 @@ function LoginFormInner({
         )}
 
         {!usePassword ? (
-          <form onSubmit={codeSent ? submitCode : (e) => (e.preventDefault(), void sendCode())} className="space-y-4">
+          <form
+            onSubmit={codeSent ? submitCode : (e) => (e.preventDefault(), void sendCode())}
+            className="space-y-4"
+          >
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
               <Input

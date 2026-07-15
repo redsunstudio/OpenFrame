@@ -16,8 +16,8 @@ export type R2VideoInitResponse = {
 
 // Files above this size upload as parallel 64MB parts — a single PUT stream
 // to the bucket's region measured ~5 Mbps on high-RTT connections.
-const MULTIPART_THRESHOLD_BYTES = 64 * 1024 * 1024;
-const MULTIPART_PART_BYTES = 64 * 1024 * 1024;
+export const MULTIPART_THRESHOLD_BYTES = 64 * 1024 * 1024;
+export const MULTIPART_PART_BYTES = 64 * 1024 * 1024;
 const MULTIPART_CONCURRENCY = 4;
 
 export type R2VideoUploadResult = R2VideoInitResponse & {
@@ -146,7 +146,7 @@ export async function cleanupPendingR2VideoUpload(
   }
 }
 
-async function uploadPartsWithProgress(
+export async function uploadPartsWithProgress(
   file: File,
   partUrls: string[],
   onProgress?: UploadProgressHandler
@@ -197,16 +197,13 @@ async function uploadPartsWithProgress(
     });
 
   let next = 0;
-  const workers = Array.from(
-    { length: Math.min(MULTIPART_CONCURRENCY, partCount) },
-    async () => {
-      while (next < partCount) {
-        const index = next;
-        next += 1;
-        await uploadPart(index);
-      }
+  const workers = Array.from({ length: Math.min(MULTIPART_CONCURRENCY, partCount) }, async () => {
+    while (next < partCount) {
+      const index = next;
+      next += 1;
+      await uploadPart(index);
     }
-  );
+  });
   await Promise.all(workers);
 }
 

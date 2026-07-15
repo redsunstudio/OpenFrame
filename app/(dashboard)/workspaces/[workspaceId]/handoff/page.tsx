@@ -51,14 +51,29 @@ export default async function HandoffPage({ params }: HandoffPageProps) {
       <ModuleNav workspace={workspace} active="handoff" />
 
       <Card>
-        <CardContent className="py-14 flex flex-col items-center text-center gap-3">
+        <CardContent className="py-14 flex flex-col items-center text-center gap-4">
           <Inbox className="h-10 w-10 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">Footage Handoff is moving in here</h2>
-          <p className="text-sm text-muted-foreground max-w-md">
-            The native drop zone lands in this tab shortly. Until then, send footage through
-            the Footage Handoff page on your dashboard — everything sent there is already
-            logged and picked up by the team.
-          </p>
+          <h2 className="text-lg font-semibold">Footage lives on each video</h2>
+          <div className="text-sm text-muted-foreground max-w-md space-y-2 text-left">
+            <p>
+              1. Open the pipeline and pick the video the footage belongs to — or create it with
+              &ldquo;New video idea&rdquo;.
+            </p>
+            <p>
+              2. Drag your files into the Footage section on that item. Big files upload in
+              parallel; keep the tab open until they finish.
+            </p>
+            <p>
+              3. Done — the team is notified, and you&rsquo;ll get an email when a cut is ready to
+              review.
+            </p>
+          </div>
+          <Link
+            href={`/workspaces/${workspaceId}`}
+            className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors"
+          >
+            Open the pipeline
+          </Link>
         </CardContent>
       </Card>
     </div>

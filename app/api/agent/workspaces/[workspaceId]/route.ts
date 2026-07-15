@@ -25,6 +25,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         slug: true,
         features: true,
         brandAccent: true,
+        brandLogoUrl: true,
         publishing: true,
         coverKey: true,
       },
@@ -68,7 +69,7 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return Boolean(v) && typeof v === 'object' && !Array.isArray(v);
 }
 
-// PATCH /api/agent/workspaces/[workspaceId] { publishing?, features?, brandAccent? }
+// PATCH /api/agent/workspaces/[workspaceId] { publishing?, features?, brandAccent?, brandLogoUrl? }
 //
 // MERGE semantics (data protection): objects are merged into the existing
 // config key-by-key — sending { features: { posts: true } } can never wipe
@@ -123,12 +124,31 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
       data.brandAccent = body.brandAccent;
     }
+    if ('brandLogoUrl' in body) {
+      // Rendered in client emails, so it must be publicly reachable.
+      if (
+        body.brandLogoUrl !== null &&
+        (typeof body.brandLogoUrl !== 'string' ||
+          body.brandLogoUrl.length > 500 ||
+          !/^(https:\/\/|\/)[^\s"'<>]+$/.test(body.brandLogoUrl))
+      ) {
+        return apiErrors.badRequest('brandLogoUrl must be an https URL, app path, or null');
+      }
+      data.brandLogoUrl = body.brandLogoUrl;
+    }
     if (Object.keys(data).length === 0) return apiErrors.badRequest('nothing to update');
 
     const workspace = await db.workspace.update({
       where: { id: workspaceId },
       data,
-      select: { id: true, name: true, features: true, brandAccent: true, publishing: true },
+      select: {
+        id: true,
+        name: true,
+        features: true,
+        brandAccent: true,
+        brandLogoUrl: true,
+        publishing: true,
+      },
     });
     return withCacheControl(successResponse(workspace), 'private, no-store');
   } catch (error) {

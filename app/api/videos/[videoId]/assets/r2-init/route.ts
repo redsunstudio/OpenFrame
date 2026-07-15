@@ -9,10 +9,14 @@ import {
   verifyR2UploadToken,
 } from '@/lib/r2-upload-token';
 import {
+  abortMultipartVideoUpload,
+  completeMultipartVideoUpload,
+  createMultipartVideoUpload,
   createPresignedImagePutUrl,
   createPresignedVideoPutUrl,
   deleteR2Object,
   deleteVideoObject,
+  presignVideoUploadPart,
 } from '@/lib/r2';
 import { getMaxVideoUploadBytes, isS3VideoUploadsEnabled } from '@/lib/feature-flags';
 import {
@@ -101,6 +105,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     );
     if ('error' in reserveResult) return reserveResult.error;
 
+    const partCountRaw = body?.partCount;
+    let partCount = 0;
+    if (partCountRaw !== undefined && partCountRaw !== null) {
+      partCount = Number(partCountRaw);
+      if (!Number.isInteger(partCount) || partCount < 2 || partCount > 200) {
+        return apiErrors.badRequest('partCount must be an integer between 2 and 200');
+      }
+    }
+
     const fileId = randomUUID();
     const filename = `${fileId}.${ext}`;
     const objectKey = buildVideoObjectKey(filename);
@@ -109,13 +122,29 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const thumbnailObjectKey = `images/${thumbnailFilename}`;
     const thumbnailProxyUrl = `/api/upload/image/${thumbnailFilename}`;
 
-    let presignedPutUrl: string;
+    let presignedPutUrl: string | null = null;
+    let uploadId: string | null = null;
+    let partUrls: string[] | null = null;
     let thumbnailPresignedPutUrl: string;
     try {
-      [presignedPutUrl, thumbnailPresignedPutUrl] = await Promise.all([
-        createPresignedVideoPutUrl(objectKey, contentType, sizeBytes),
-        createPresignedImagePutUrl(thumbnailObjectKey, 'image/jpeg'),
-      ]);
+      if (partCount > 0) {
+        // Multipart: parallel part PUTs beat a single stream on high-RTT paths.
+        [uploadId, thumbnailPresignedPutUrl] = await Promise.all([
+          createMultipartVideoUpload(objectKey, contentType),
+          createPresignedImagePutUrl(thumbnailObjectKey, 'image/jpeg'),
+        ]);
+        const confirmedUploadId = uploadId;
+        partUrls = await Promise.all(
+          Array.from({ length: partCount }, (_, i) =>
+            presignVideoUploadPart(objectKey, confirmedUploadId, i + 1)
+          )
+        );
+      } else {
+        [presignedPutUrl, thumbnailPresignedPutUrl] = await Promise.all([
+          createPresignedVideoPutUrl(objectKey, contentType, sizeBytes),
+          createPresignedImagePutUrl(thumbnailObjectKey, 'image/jpeg'),
+        ]);
+      }
     } catch (error) {
       await releaseStorageReservation(reserveResult.reservationId, billedUserId);
       logError('Failed to create presigned asset video upload URL:', error);
@@ -148,6 +177,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const response = successResponse({
       presignedPutUrl,
+      uploadId,
+      partUrls,
       objectKey,
       proxyUrl,
       uploadToken,
@@ -162,6 +193,73 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   } catch (error) {
     logError('Error initializing R2 asset video upload:', error);
     return apiErrors.internalError('Failed to initialize upload');
+  }
+}
+
+// PATCH /api/videos/[videoId]/assets/r2-init — complete a multipart asset upload.
+// { objectKey, uploadId, uploadToken } — the server lists the uploaded parts
+// itself (browsers can't read part ETags without exposeHeaders CORS) and
+// assembles the object so the normal finalize path can consume it.
+export async function PATCH(request: NextRequest, { params }: RouteParams) {
+  try {
+    const limited = await rateLimit(request, 'asset-r2-init');
+    if (limited) return limited;
+
+    const { videoId } = await params;
+    const context = await getVideoAssetAccessContext(request, videoId, 'COMMENT');
+    if (!context) return apiErrors.notFound('Video');
+    if (!context.canUploadAssets) return apiErrors.forbidden('Access denied');
+    if (!context.viewerUserId) return apiErrors.unauthorized();
+    if (!isS3VideoUploadsEnabled()) {
+      return apiErrors.badRequest('S3 video uploads are disabled by this host');
+    }
+
+    const body = await request.json().catch(() => null);
+    const objectKey = typeof body?.objectKey === 'string' ? body.objectKey.trim() : '';
+    const uploadId = typeof body?.uploadId === 'string' ? body.uploadId.trim() : '';
+    const uploadToken = typeof body?.uploadToken === 'string' ? body.uploadToken.trim() : '';
+    if (!objectKey || !uploadId || !uploadToken) {
+      return apiErrors.badRequest('objectKey, uploadId and uploadToken are required');
+    }
+
+    const projectId = context.video.projectId;
+    const tokenPayload = parseR2UploadToken(uploadToken);
+    if (!tokenPayload) return apiErrors.forbidden('Invalid upload token');
+    const isValidUploadToken = verifyR2UploadToken(uploadToken, {
+      userId: context.viewerUserId,
+      projectId,
+      objectKey,
+      sessionId: tokenPayload.sid,
+      tokenId: tokenPayload.jti,
+    });
+    if (!isValidUploadToken) return apiErrors.forbidden('Invalid upload token');
+
+    const uploadSession = await db.videoUploadSession.findFirst({
+      where: {
+        id: tokenPayload.sid,
+        status: 'INITIATED',
+        userId: context.viewerUserId,
+        projectId,
+        objectKey,
+        uploadJti: tokenPayload.jti,
+        expiresAt: { gt: new Date() },
+      },
+      select: { id: true },
+    });
+    if (!uploadSession) return apiErrors.forbidden('Invalid upload token');
+
+    try {
+      await completeMultipartVideoUpload(objectKey, uploadId);
+    } catch (error) {
+      logError('Multipart asset completion failed:', error);
+      await abortMultipartVideoUpload(objectKey, uploadId).catch(() => {});
+      return apiErrors.internalError('Failed to assemble the uploaded parts');
+    }
+
+    return withCacheControl(successResponse({ ok: true, objectKey }), 'private, no-store');
+  } catch (error) {
+    logError('Error completing multipart asset upload:', error);
+    return apiErrors.internalError('Failed to complete upload');
   }
 }
 

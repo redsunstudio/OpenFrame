@@ -819,8 +819,17 @@ export function VideoPageContent({
             />
           )}
 
-          {!embed && !isFullscreenMode && canDecideReview && (
-            <div className="sm:hidden">
+          {!embed && canDecideReview && (
+            <div
+              className={cn(
+                'sm:hidden',
+                // Fullscreen is a custom overlay mode, so the verdict band stays
+                // reachable — pinned above the control bar, fading with the chrome.
+                isFullscreenMode &&
+                  'absolute inset-x-0 bottom-20 z-20 px-3 transition-opacity duration-300',
+                isFullscreenMode && cursorIdle && isPlaying && 'opacity-0 pointer-events-none'
+              )}
+            >
               <ReviewDecisionBar
                 videoId={videoId}
                 status={video.status ?? ''}

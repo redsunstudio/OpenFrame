@@ -38,6 +38,11 @@ import {
 } from '@/components/ui/select';
 import { PIPELINE_STAGES, stageOf } from '@/components/pipeline-board';
 import { VIDEO_TYPES, typeMeta, isImageAsset, typeOptionLabel } from '@/lib/video-type';
+import {
+  MULTIPART_PART_BYTES,
+  MULTIPART_THRESHOLD_BYTES,
+  uploadPartsWithProgress,
+} from '@/lib/client/r2-video-upload';
 
 interface ItemVersion {
   id: string;
@@ -411,15 +416,38 @@ export function VideoItemClient({
   async function uploadAsset(file: File, onPct: (pct: number) => void): Promise<Asset> {
     const isVideo = file.type.startsWith('video/');
     if (isVideo) {
+      // Big raw footage goes up as parallel 64MB parts — a single PUT stream
+      // to the bucket's region crawls on high-RTT connections.
+      const useMultipart = file.size > MULTIPART_THRESHOLD_BYTES;
+      const partCount = useMultipart ? Math.ceil(file.size / MULTIPART_PART_BYTES) : 0;
       const initRes = await fetch(`/api/videos/${video.id}/assets/r2-init`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fileName: file.name, contentType: file.type, sizeBytes: file.size }),
+        body: JSON.stringify({
+          fileName: file.name,
+          contentType: file.type,
+          sizeBytes: file.size,
+          ...(useMultipart ? { partCount } : {}),
+        }),
       });
       if (!initRes.ok)
         throw new Error((await initRes.json())?.error?.message || 'upload init failed');
       const init = (await initRes.json()).data;
-      await putWithRetry(init.presignedPutUrl, file, init.contentType || file.type, onPct);
+      if (init.uploadId && init.partUrls && init.partUrls.length > 0) {
+        await uploadPartsWithProgress(file, init.partUrls, onPct);
+        const completeRes = await fetch(`/api/videos/${video.id}/assets/r2-init`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            objectKey: init.objectKey,
+            uploadId: init.uploadId,
+            uploadToken: init.uploadToken,
+          }),
+        });
+        if (!completeRes.ok) throw new Error('could not assemble the uploaded parts');
+      } else {
+        await putWithRetry(init.presignedPutUrl, file, init.contentType || file.type, onPct);
+      }
       const fin = await fetch(`/api/videos/${video.id}/assets`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -958,8 +986,8 @@ export function VideoItemClient({
                     {video.versions.length > 1 && (
                       <p className="text-xs text-muted-foreground">
                         {video.versions.length - 1} earlier cut
-                        {video.versions.length > 2 ? 's' : ''} — switch or delete versions from
-                        the review page.
+                        {video.versions.length > 2 ? 's' : ''} — switch or delete versions from the
+                        review page.
                       </p>
                     )}
                   </div>

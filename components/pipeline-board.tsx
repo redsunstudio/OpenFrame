@@ -442,6 +442,26 @@ export function PipelineBoard({
                       </Link>
                     )}
                   </div>
+                  {canEdit && (
+                    <div className="mt-2">
+                      {/* Drag has no touch fallback — the Select is how mobile moves cards. */}
+                      <Select
+                        value={stageOf(v.status)}
+                        onValueChange={(next) => moveStatus(v.id, next)}
+                      >
+                        <SelectTrigger className="h-7 w-full text-xs px-2">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {PIPELINE_STAGES.map((st) => (
+                            <SelectItem key={st.key} value={st.key} className="text-xs">
+                              {st.emoji} {st.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
                 </div>
               ))}
               {stageItems.length === 0 && (
@@ -496,7 +516,26 @@ export function PipelineBoard({
         </div>
       </div>
 
-      {view === 'list' ? listView : boardView}
+      {items.length === 0 ? (
+        <div className="rounded-lg border border-dashed px-6 py-14 flex flex-col items-center text-center gap-3">
+          <Lightbulb className="h-8 w-8 text-muted-foreground" />
+          <p className="text-sm font-medium">Nothing in the pipeline yet</p>
+          <p className="text-xs text-muted-foreground max-w-sm">
+            Every video starts as an idea — just a working title. Drop footage on it later, review
+            the cuts here, and it ships from this board.
+          </p>
+          {canEdit && (
+            <Button size="sm" className="mt-1" onClick={() => setDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-1.5" />
+              {allowPosts ? 'Start your first item' : 'Start your first video idea'}
+            </Button>
+          )}
+        </div>
+      ) : view === 'list' ? (
+        listView
+      ) : (
+        boardView
+      )}
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent>

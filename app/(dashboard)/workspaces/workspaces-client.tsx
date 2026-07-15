@@ -1,10 +1,12 @@
 'use client';
 
 import Link from 'next/link';
+import { useEffect } from 'react';
 import { Plus, Building2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 
 function formatRelativeTime(date: Date): string {
   const now = new Date();
@@ -51,6 +53,18 @@ export function WorkspacesClient({
   workspaceCreation,
 }: WorkspacesClientProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // Fresh invitees arrive as /workspaces?joined=<name> — greet them once.
+  useEffect(() => {
+    const joined = searchParams.get('joined');
+    if (!joined) return;
+    toast.success(`Welcome! You've joined ${joined}.`, {
+      description: 'Open the workspace below to see what needs your review.',
+    });
+    router.replace('/workspaces');
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="px-6 lg:px-8 py-8 w-full">

@@ -331,17 +331,16 @@ export function VideoDragDropUploader({
             ? `Video uploaded to ${projectName ?? projectsById.get(projectId) ?? 'project'}`
             : `${successCount} videos uploaded to ${projectName ?? projectsById.get(projectId) ?? 'project'}`
         );
-        if (fixedProjectId) {
-          setDialogOpen(false);
-          setQueue([]);
-        }
+        // Everything landed — the dialog has nothing left to say (workspace-level too).
+        setDialogOpen(false);
+        setQueue([]);
       } else if (successCount > 0 && failCount > 0) {
         toast.warning(`${successCount} uploaded, ${failCount} failed`);
       } else if (failCount > 0) {
         toast.error('All uploads failed');
       }
     },
-    [bunnyCdnHostname, directUploadProvider, fixedProjectId, projectsById, resetUploadState, router]
+    [bunnyCdnHostname, directUploadProvider, projectsById, resetUploadState, router]
   );
 
   const handleDropFiles = useCallback(
