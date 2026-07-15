@@ -10,11 +10,26 @@ export const EMAIL_COLORS = {
   textDim: '#8d8d95',
 } as const;
 
-function brandLogoSvg(): string {
+function brandLogoSvg(accent: string = EMAIL_COLORS.accent): string {
   return `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:block;pointer-events:none;">
-    <rect x="2" y="6" width="14" height="12" rx="2" stroke="${EMAIL_COLORS.accent}" stroke-width="2" />
-    <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" stroke="${EMAIL_COLORS.accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+    <rect x="2" y="6" width="14" height="12" rx="2" stroke="${accent}" stroke-width="2" />
+    <path d="m16 13 5.223 3.482a.5.5 0 0 0 .777-.416V7.87a.5.5 0 0 0-.752-.432L16 10.5" stroke="${accent}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
   </svg>`;
+}
+
+/** Per-workspace branding threaded into client-facing emails. */
+export interface EmailBrand {
+  name?: string | null;
+  accentColor?: string | null;
+  logoUrl?: string | null;
+}
+
+const HEX_COLOR = /^#[0-9a-fA-F]{6}$/;
+
+function safeAccent(brand?: EmailBrand | null): string {
+  return brand?.accentColor && HEX_COLOR.test(brand.accentColor)
+    ? brand.accentColor
+    : EMAIL_COLORS.accent;
 }
 
 export function escapeHtml(str: string): string {
@@ -39,11 +54,18 @@ export function brandedEmailTemplate(
     footerText?: string;
     footerLinkText?: string;
     footerLinkUrl?: string;
+    brand?: EmailBrand | null;
   }
 ): string {
   const footerText = options?.footerText || '';
   const footerLinkText = options?.footerLinkText || '';
   const footerLinkUrl = options?.footerLinkUrl || '';
+  const brand = options?.brand;
+  const accent = safeAccent(brand);
+  const brandName = brand?.name?.trim() || 'KreatorKit';
+  const logoCell = brand?.logoUrl
+    ? `<img src="${escapeAttr(brand.logoUrl)}" width="24" height="24" alt="" style="display:block;border-radius:4px;object-fit:cover;" />`
+    : brandLogoSvg(accent);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -54,8 +76,8 @@ export function brandedEmailTemplate(
       <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;">
         <tr><td style="padding:0 0 24px;">
           <table cellpadding="0" cellspacing="0"><tr>
-            <td style="padding-right:10px;vertical-align:middle;">${brandLogoSvg()}</td>
-            <td style="vertical-align:middle;font-size:16px;font-weight:700;color:${EMAIL_COLORS.text};letter-spacing:0.08em;">KreatorKit</td>
+            <td style="padding-right:10px;vertical-align:middle;">${logoCell}</td>
+            <td style="vertical-align:middle;font-size:16px;font-weight:700;color:${EMAIL_COLORS.text};letter-spacing:0.08em;">${escapeHtml(brandName)}</td>
           </tr></table>
         </td></tr>
 
@@ -79,9 +101,9 @@ export function brandedEmailTemplate(
 </html>`;
 }
 
-export function emailHeading(icon: string, title: string): string {
+export function emailHeading(icon: string, title: string, brand?: EmailBrand | null): string {
   return `<td style="padding:16px 20px;border-bottom:1px solid ${EMAIL_COLORS.border};background-color:${EMAIL_COLORS.accentDark};">
-      <span style="font-size:14px;font-weight:600;color:${EMAIL_COLORS.accent};">${icon} &nbsp;${title}</span>
+      <span style="font-size:14px;font-weight:600;color:${safeAccent(brand)};">${icon} &nbsp;${title}</span>
     </td>`;
 }
 
@@ -95,8 +117,8 @@ export function emailRow(label: string, value: string, isHighlight = false): str
     </tr>`;
 }
 
-export function emailButton(text: string, url: string): string {
-  return `<a href="${escapeAttr(url)}" style="display:inline-block;padding:9px 22px;background-color:${EMAIL_COLORS.accent};color:#0f1114;font-size:13px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">${text}</a>`;
+export function emailButton(text: string, url: string, brand?: EmailBrand | null): string {
+  return `<a href="${escapeAttr(url)}" style="display:inline-block;padding:9px 22px;background-color:${safeAccent(brand)};color:#0f1114;font-size:13px;font-weight:700;text-decoration:none;letter-spacing:0.2px;">${text}</a>`;
 }
 
 export function emailHighlight(text: string): string {

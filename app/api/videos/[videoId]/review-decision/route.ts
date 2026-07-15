@@ -5,7 +5,8 @@ import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response
 import { rateLimit } from '@/lib/rate-limit';
 import { validateShareLinkAccess } from '@/lib/share-links';
 import { getShareSessionFromRequest } from '@/lib/share-session';
-import { notifyProjectOwner } from '@/lib/notifications';
+import { notifyUsers } from '@/lib/notifications';
+import { teamUserIds } from '@/lib/review-notify';
 import { logError } from '@/lib/logger';
 
 interface RouteParams {
@@ -76,10 +77,13 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       },
     });
 
-    // Skip self-notification when the owner is the one deciding.
-    if (session?.user?.id !== video.project.ownerId) {
+    // Tell the whole team (owner + workspace admins), minus whoever decided.
+    const team = (await teamUserIds(video.project.ownerId, video.project.workspaceId)).filter(
+      (id) => id !== session?.user?.id
+    );
+    if (team.length > 0) {
       const baseUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.NEXTAUTH_URL || '';
-      notifyProjectOwner(video.project.ownerId, {
+      notifyUsers(team, {
         type: 'approval_action',
         projectName: video.project.name,
         videoTitle: video.title,

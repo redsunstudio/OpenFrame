@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { db } from '@/lib/db';
 import { auth, computeProjectAccess, projectAccessInclude } from '@/lib/auth';
 import { rateLimit } from '@/lib/rate-limit';
-import { notifyProjectOwner } from '@/lib/notifications';
+import { notifyUsers } from '@/lib/notifications';
+import { teamUserIds } from '@/lib/review-notify';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { validateShareLinkAccess } from '@/lib/share-links';
 import { getShareSessionFromRequest } from '@/lib/share-session';
@@ -508,10 +509,12 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
 
     const comment = result;
 
-    // Notify project owner (fire-and-forget, skip self-notifications)
+    // Notify the team — owner + workspace admins, minus the author.
     const commentAuthorName = session?.user?.name || guestName || 'Someone';
-    const isOwnProject = session?.user?.id === project.ownerId;
-    if (!isOwnProject) {
+    const team = (await teamUserIds(project.ownerId, project.workspaceId)).filter(
+      (id) => id !== session?.user?.id
+    );
+    if (team.length > 0) {
       const baseUrl = process.env.NEXTAUTH_URL || '';
       const videoTitle = version.video.title || 'Untitled Video';
       const mins = Math.floor(parseFloat(timestamp) / 60);
@@ -524,7 +527,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           where: { id: parentId },
           include: { author: { select: { name: true } } },
         });
-        notifyProjectOwner(project.ownerId, {
+        notifyUsers(team, {
           type: 'new_reply',
           projectName: project.name,
           videoTitle,
@@ -535,7 +538,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
           url: `${baseUrl}/watch/${version.video.id}`,
         }).catch((err) => logError('Notification failed:', err));
       } else {
-        notifyProjectOwner(project.ownerId, {
+        notifyUsers(team, {
           type: 'new_comment',
           projectName: project.name,
           videoTitle,

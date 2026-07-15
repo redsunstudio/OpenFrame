@@ -20,6 +20,7 @@ import {
   VIDEO_OBJECT_KEY_PREFIX,
 } from '@/lib/video-upload-validation';
 import { logError } from '@/lib/logger';
+import { notifyReviewReady } from '@/lib/review-notify';
 
 interface RouteParams {
   params: Promise<{ videoId: string }>;
@@ -199,6 +200,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         where: { id: videoId },
         select: { status: true },
       });
+
+      // Fresh cut just moved the item into REVIEW — tell the reviewers.
+      if (['IDEA', 'FILMED', 'EDITING'].includes(video.status)) {
+        notifyReviewReady({
+          videoId,
+          actorName: 'the editing team',
+          versionLabel: version.versionLabel || `Version ${version.versionNumber}`,
+        }).catch((err) => logError('Notification failed:', err));
+      }
+
       return withCacheControl(
         successResponse(
           {

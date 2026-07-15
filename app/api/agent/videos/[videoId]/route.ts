@@ -6,6 +6,7 @@ import { isAgentRequest } from '@/lib/agent-auth';
 import { createPresignedFileGetUrl, createPresignedVideoGetUrl } from '@/lib/r2';
 import { collectVideoMediaUrls, deleteMediaFilesBestEffort } from '@/lib/r2-cleanup';
 import { logError } from '@/lib/logger';
+import { notifyReviewReady } from '@/lib/review-notify';
 
 interface RouteParams {
   params: Promise<{ videoId: string }>;
@@ -148,7 +149,19 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       updateData.description = description === null ? null : String(description).trim() || null;
     if (Object.keys(updateData).length === 0) return apiErrors.badRequest('nothing to update');
 
+    const prior =
+      updateData.status === 'REVIEW'
+        ? await db.video.findUnique({ where: { id: videoId }, select: { status: true } })
+        : null;
     const video = await db.video.update({ where: { id: videoId }, data: updateData });
+
+    // Agent flip into REVIEW — tell the reviewers.
+    if (updateData.status === 'REVIEW' && prior && prior.status !== 'REVIEW') {
+      notifyReviewReady({ videoId, actorName: 'the editing team' }).catch((err) =>
+        logError('Notification failed:', err)
+      );
+    }
+
     return withCacheControl(
       successResponse({ id: video.id, status: video.status }),
       'private, no-store'

@@ -5,6 +5,7 @@ import { validateUrl, validateOptionalUrlOrAppPath } from '@/lib/validation';
 import { toJsonSafe } from '@/lib/json-serialize';
 import { rateLimit } from '@/lib/rate-limit';
 import { notifyProjectOwner } from '@/lib/notifications';
+import { notifyReviewReady } from '@/lib/review-notify';
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { verifyBunnyUploadToken } from '@/lib/bunny-upload-token';
 import { finalizeR2VideoUpload } from '@/lib/r2-video-finalize';
@@ -268,6 +269,16 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         versionLabel: version.versionLabel || `Version ${version.versionNumber}`,
         addedBy: session.user.name || 'A team member',
         url: `${baseUrl}/watch/${video.id}`,
+      }).catch((err) => logError('Notification failed:', err));
+    }
+
+    // Fresh cut just moved the item into REVIEW — tell the reviewers.
+    if (['IDEA', 'FILMED', 'EDITING'].includes(video.status)) {
+      notifyReviewReady({
+        videoId: video.id,
+        actorUserId: session.user.id,
+        actorName: session.user.name,
+        versionLabel: version.versionLabel || `Version ${version.versionNumber}`,
       }).catch((err) => logError('Notification failed:', err));
     }
 

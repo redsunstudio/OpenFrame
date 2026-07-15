@@ -214,6 +214,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
       scope: invitation.scope,
       targetName: workspace.name,
       invitationUrl,
+      workspaceId,
     });
 
     const response = successResponse({ message: 'Invitation email sent.' });

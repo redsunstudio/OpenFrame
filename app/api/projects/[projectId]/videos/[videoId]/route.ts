@@ -10,6 +10,7 @@ import { buildCleanupWarnings, logCleanupWarnings } from '@/lib/cleanup-warnings
 import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response';
 import { logError } from '@/lib/logger';
 import { canDownloadProjectMedia } from '@/lib/project-download';
+import { notifyReviewReady } from '@/lib/review-notify';
 
 function bigintSafe<T>(value: T): T {
   return JSON.parse(JSON.stringify(value, (_k, v) => (typeof v === 'bigint' ? v.toString() : v)));
@@ -250,6 +251,15 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         _count: { select: { versions: true } },
       },
     });
+
+    // Manual flip into REVIEW — tell the reviewers.
+    if (updateData.status === 'REVIEW' && video.status !== 'REVIEW') {
+      notifyReviewReady({
+        videoId,
+        actorUserId: session.user.id,
+        actorName: session.user.name,
+      }).catch((err) => logError('Notification failed:', err));
+    }
 
     const response = successResponse(bigintSafe(updatedVideo));
     return withCacheControl(response, 'private, no-store');

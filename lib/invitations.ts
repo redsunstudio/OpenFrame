@@ -10,6 +10,7 @@ import {
 } from '@prisma/client';
 import { db } from '@/lib/db';
 import {
+  EmailBrand,
   brandedEmailTemplate,
   emailButton,
   emailHeading,
@@ -21,7 +22,6 @@ import { logError } from '@/lib/logger';
 
 const INVITATION_TTL_DAYS = 7;
 const MAX_INVITATION_RETRIES = 3;
-
 
 function roleLabel(role: InvitationRole): string {
   return role === 'ADMIN' ? 'Admin' : 'Commentator';
@@ -47,19 +47,41 @@ export async function sendInvitationEmail(input: {
   scope: InvitationScope;
   targetName: string;
   invitationUrl: string;
+  /** When set, the email carries this workspace's brand instead of KreatorKit's. */
+  workspaceId?: string | null;
 }): Promise<boolean> {
   if (!isEmailDeliveryConfigured()) {
     console.warn('Email delivery not configured — skipping invitation email');
     return false;
   }
 
-  const subject = `[KreatorKit] You were invited to a ${scopeLabel(input.scope)}: ${input.targetName}`;
+  let brand: EmailBrand | null = null;
+  if (input.workspaceId) {
+    try {
+      const workspace = await db.workspace.findUnique({
+        where: { id: input.workspaceId },
+        select: { name: true, brandAccent: true, brandLogoUrl: true },
+      });
+      if (workspace) {
+        brand = {
+          name: workspace.name,
+          accentColor: workspace.brandAccent,
+          logoUrl: workspace.brandLogoUrl,
+        };
+      }
+    } catch (err) {
+      logError('invitation brand lookup failed:', err);
+    }
+  }
+
+  const subject = `[${brand?.name?.trim() || 'KreatorKit'}] You were invited to a ${scopeLabel(input.scope)}: ${input.targetName}`;
   const html = invitationEmailTemplate({
     inviterName: input.inviterName,
     role: roleLabel(input.role),
     scope: scopeLabel(input.scope),
     targetName: input.targetName,
     invitationUrl: input.invitationUrl,
+    brand,
   });
 
   const sent = await sendEmail({ to: input.to, subject, html });
@@ -73,12 +95,14 @@ function invitationEmailTemplate(input: {
   scope: string;
   targetName: string;
   invitationUrl: string;
+  brand?: EmailBrand | null;
 }): string {
+  const joinTarget = input.brand?.name?.trim() || 'KreatorKit';
   return brandedEmailTemplate(
     `
-      <tr>${emailHeading('&#10003;', `${escapeHtml(input.scope.charAt(0).toUpperCase() + input.scope.slice(1))} Invitation`)}</tr>
+      <tr>${emailHeading('&#10003;', `${escapeHtml(input.scope.charAt(0).toUpperCase() + input.scope.slice(1))} Invitation`, input.brand)}</tr>
       <tr><td style="padding:20px;">
-        ${emailHighlight('You were invited to join KreatorKit.')}
+        ${emailHighlight(`You were invited to join ${escapeHtml(joinTarget)}.`)}
         <table cellpadding="0" cellspacing="0" style="width:100%;margin-bottom:16px;">
           ${emailRow('Invited by', escapeHtml(input.inviterName), true)}
           ${emailRow('Target', `${escapeHtml(input.targetName)} (${escapeHtml(input.scope)})`, true)}
@@ -86,10 +110,11 @@ function invitationEmailTemplate(input: {
           ${emailRow('Expires', `${INVITATION_TTL_DAYS} days`)}
         </table>
         ${emailHighlight('Open the link, enter this email address and we&#39;ll send you a sign-in code — no password needed.')}
-        ${emailButton('Open your workspace &#8594;', input.invitationUrl)}
+        ${emailButton('Open your workspace &#8594;', input.invitationUrl, input.brand)}
       </td></tr>
     `,
     {
+      brand: input.brand,
       footerText: `This invitation expires in ${INVITATION_TTL_DAYS} days.`,
     }
   );
