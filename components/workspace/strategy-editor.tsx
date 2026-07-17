@@ -1,7 +1,17 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Compass, Repeat, StickyNote, Plus, Trash2, Check, Loader2 } from 'lucide-react';
+import {
+  Compass,
+  Repeat,
+  StickyNote,
+  Plus,
+  Trash2,
+  Check,
+  Loader2,
+  Send,
+  ArrowUpRight,
+} from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
@@ -13,8 +23,12 @@ interface StrategyEditorProps {
   workspaceId: string;
   initial: WorkspaceStrategy;
   canEdit: boolean;
+  /** Owner/admins can spawn a recurring idea into the pipeline as an IDEA item. */
+  canCreatePipeline: boolean;
   accent?: string | null;
 }
+
+type PipelineState = { state: 'sending' | 'sent' | 'error'; videoId?: string };
 
 function newId(): string {
   try {
@@ -24,11 +38,42 @@ function newId(): string {
   }
 }
 
-export function StrategyEditor({ workspaceId, initial, canEdit, accent }: StrategyEditorProps) {
+export function StrategyEditor({
+  workspaceId,
+  initial,
+  canEdit,
+  canCreatePipeline,
+  accent,
+}: StrategyEditorProps) {
   const [pillars, setPillars] = useState<ContentPillar[]>(initial.pillars);
   const [recurringIdeas, setRecurringIdeas] = useState<RecurringIdea[]>(initial.recurringIdeas);
   const [notes, setNotes] = useState(initial.notes);
   const [save, setSave] = useState<SaveState>('idle');
+  const [pipeline, setPipeline] = useState<Record<string, PipelineState>>({});
+
+  async function sendToPipeline(idea: RecurringIdea) {
+    const title = idea.title.trim();
+    if (!title) return;
+    setPipeline((p) => ({ ...p, [idea.id]: { state: 'sending' } }));
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/videos`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: title.slice(0, 200),
+          brief: idea.notes?.trim() || undefined,
+        }),
+      });
+      if (res.ok) {
+        const { data } = await res.json();
+        setPipeline((p) => ({ ...p, [idea.id]: { state: 'sent', videoId: data?.id } }));
+      } else {
+        setPipeline((p) => ({ ...p, [idea.id]: { state: 'error' } }));
+      }
+    } catch {
+      setPipeline((p) => ({ ...p, [idea.id]: { state: 'error' } }));
+    }
+  }
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Hold the freshest values so the debounced flush sends the latest snapshot.
@@ -183,6 +228,15 @@ export function StrategyEditor({ workspaceId, initial, canEdit, accent }: Strate
                   rows={2}
                   maxLength={5000}
                 />
+                {canCreatePipeline && (
+                  <PipelineButton
+                    workspaceId={workspaceId}
+                    state={pipeline[idea.id]}
+                    disabled={!idea.title.trim()}
+                    accent={accent}
+                    onClick={() => sendToPipeline(idea)}
+                  />
+                )}
               </CardContent>
             </Card>
           ))}
@@ -282,6 +336,58 @@ function SaveWhisper({ state, onRetry }: { state: SaveState; onRetry: () => void
     <button onClick={onRetry} className="text-xs text-destructive hover:underline">
       Save failed — retry
     </button>
+  );
+}
+
+function PipelineButton({
+  workspaceId,
+  state,
+  disabled,
+  accent,
+  onClick,
+}: {
+  workspaceId: string;
+  state?: PipelineState;
+  disabled?: boolean;
+  accent?: string | null;
+  onClick: () => void;
+}) {
+  if (state?.state === 'sent') {
+    return (
+      <a
+        href={state.videoId ? `/workspaces/${workspaceId}/videos/${state.videoId}` : undefined}
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+      >
+        <Check className="h-3.5 w-3.5" />
+        In pipeline
+        {state.videoId && <ArrowUpRight className="h-3 w-3" />}
+      </a>
+    );
+  }
+  const sending = state?.state === 'sending';
+  return (
+    <div className="flex items-center gap-2">
+      <button
+        type="button"
+        onClick={onClick}
+        disabled={disabled || sending}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+        style={!disabled && !sending && accent ? { color: accent } : undefined}
+        title={disabled ? 'Give the idea a name first' : 'Create an IDEA item in the pipeline'}
+      >
+        {sending ? (
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        ) : (
+          <Send className="h-3.5 w-3.5" />
+        )}
+        Send to pipeline
+      </button>
+      {state?.state === 'error' && (
+        <button onClick={onClick} className="text-xs text-destructive hover:underline">
+          failed — retry
+        </button>
+      )}
+    </div>
   );
 }
 

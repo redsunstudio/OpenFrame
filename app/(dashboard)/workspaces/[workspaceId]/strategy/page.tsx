@@ -78,6 +78,7 @@ export default async function StrategyPage({ params }: StrategyPageProps) {
         workspaceId={workspaceId}
         initial={strategy}
         canEdit={canEdit}
+        canCreatePipeline={access.canEdit}
         accent={workspace.brandAccent}
       />
     </div>
