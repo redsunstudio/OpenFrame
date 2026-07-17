@@ -57,11 +57,11 @@ export default async function StrategyPage({ params }: StrategyPageProps) {
     >
       <div className="mb-6">
         <Link
-          href="/workspaces"
+          href={`/workspaces/${workspaceId}`}
           className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-4 w-4 mr-1" />
-          All Workspaces
+          {workspace.name}
         </Link>
       </div>
       <div className="mb-8">

@@ -5,7 +5,7 @@ import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response
 import { isAgentRequest } from '@/lib/agent-auth';
 import { getR2FileObjectMetadata } from '@/lib/r2';
 import { logError } from '@/lib/logger';
-import { parseStrategy } from '@/lib/strategy';
+import { parseStrategy, strategyLimitError } from '@/lib/strategy';
 
 interface RouteParams {
   params: Promise<{ workspaceId: string }>;
@@ -88,7 +88,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
 
     const current = await db.workspace.findUnique({
       where: { id: workspaceId },
-      select: { features: true, publishing: true },
+      select: { features: true, publishing: true, strategy: true },
     });
     if (!current) return apiErrors.notFound('Workspace');
 
@@ -140,12 +140,27 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       data.brandLogoUrl = body.brandLogoUrl;
     }
     if ('strategy' in body) {
-      // Whole-object replace (sanitized/clamped). Lets the quarterly-strategy
-      // meeting write pillars/recurring ideas/notes straight into the workspace.
-      data.strategy =
-        body.strategy === null
-          ? Prisma.DbNull
-          : (parseStrategy(body.strategy) as unknown as Prisma.InputJsonValue);
+      // SECTION-LEVEL MERGE (same data-protection contract as features/publishing):
+      // only the keys present in the payload replace their section — an agent
+      // PATCHing { strategy: { notes } } can never wipe client-typed pillars.
+      // strategy: null clears the whole blob (explicit, never accidental).
+      if (body.strategy === null) {
+        data.strategy = Prisma.DbNull;
+      } else {
+        if (!isPlainObject(body.strategy)) {
+          return apiErrors.badRequest('strategy must be an object or null');
+        }
+        const limitError = strategyLimitError(body.strategy);
+        if (limitError) return apiErrors.badRequest(`strategy ${limitError}`);
+        const cur = parseStrategy(current.strategy);
+        const patch = body.strategy as Record<string, unknown>;
+        const merged = parseStrategy({
+          pillars: 'pillars' in patch ? patch.pillars : cur.pillars,
+          recurringIdeas: 'recurringIdeas' in patch ? patch.recurringIdeas : cur.recurringIdeas,
+          notes: 'notes' in patch ? patch.notes : cur.notes,
+        });
+        data.strategy = { ...merged, rev: cur.rev + 1 } as unknown as Prisma.InputJsonValue;
+      }
     }
     if (Object.keys(data).length === 0) return apiErrors.badRequest('nothing to update');
 

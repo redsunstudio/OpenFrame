@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import {
   Compass,
   Repeat,
@@ -12,12 +13,13 @@ import {
   Send,
   ArrowUpRight,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import type { ContentPillar, RecurringIdea, WorkspaceStrategy } from '@/lib/strategy';
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'error';
+type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
 
 interface StrategyEditorProps {
   workspaceId: string;
@@ -28,7 +30,9 @@ interface StrategyEditorProps {
   accent?: string | null;
 }
 
-type PipelineState = { state: 'sending' | 'sent' | 'error'; videoId?: string };
+type PipelineState = 'sending' | 'error';
+
+type Sections = Omit<WorkspaceStrategy, 'rev'>;
 
 function newId(): string {
   try {
@@ -51,10 +55,106 @@ export function StrategyEditor({
   const [save, setSave] = useState<SaveState>('idle');
   const [pipeline, setPipeline] = useState<Record<string, PipelineState>>({});
 
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedBadgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Freshest sections for the debounced flush + unload paths.
+  const latest = useRef<Sections>({
+    pillars: initial.pillars,
+    recurringIdeas: initial.recurringIdeas,
+    notes: initial.notes,
+  });
+  // Snapshot of the last successfully saved content — the dirty check.
+  const lastSaved = useRef(
+    JSON.stringify({
+      pillars: initial.pillars,
+      recurringIdeas: initial.recurringIdeas,
+      notes: initial.notes,
+    })
+  );
+  // Optimistic-lock revision; bumped from each save response.
+  const rev = useRef(initial.rev);
+  // True while an edit is awaiting a save (drives unmount/pagehide flushes).
+  const pending = useRef(false);
+
+  const flush = useCallback(async () => {
+    if (!canEdit || save === 'conflict') return;
+    const sections = latest.current;
+    const body = JSON.stringify({ strategy: { ...sections, rev: rev.current } });
+    setSave('saving');
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/strategy`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body,
+      });
+      if (res.ok) {
+        const { data } = await res.json().catch(() => ({ data: null }));
+        if (typeof data?.strategy?.rev === 'number') rev.current = data.strategy.rev;
+        lastSaved.current = JSON.stringify(sections);
+        pending.current = false;
+        setSave('saved');
+        if (savedBadgeTimer.current) clearTimeout(savedBadgeTimer.current);
+        savedBadgeTimer.current = setTimeout(
+          () => setSave((s) => (s === 'saved' ? 'idle' : s)),
+          2000
+        );
+      } else if (res.status === 409) {
+        // Someone else saved since we loaded — stop writing, ask for a reload.
+        pending.current = false;
+        setSave('conflict');
+      } else {
+        setSave('error');
+      }
+    } catch {
+      setSave('error');
+    }
+  }, [workspaceId, canEdit, save]);
+
+  const flushRef = useRef(flush);
+  useEffect(() => {
+    flushRef.current = flush;
+  }, [flush]);
+
+  // Debounced auto-save on any real edit (dirty check skips mounts and reverts).
+  useEffect(() => {
+    if (!canEdit) return;
+    const sections: Sections = { pillars, recurringIdeas, notes };
+    if (JSON.stringify(sections) === lastSaved.current) return;
+    latest.current = sections;
+    pending.current = true;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => flushRef.current(), 1200);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [pillars, recurringIdeas, notes, canEdit]);
+
+  // Never drop a pending edit: flush on SPA unmount, keepalive-PUT on tab close.
+  useEffect(() => {
+    const onPageHide = () => {
+      if (!pending.current) return;
+      try {
+        fetch(`/api/workspaces/${workspaceId}/strategy`, {
+          method: 'PUT',
+          keepalive: true,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ strategy: { ...latest.current, rev: rev.current } }),
+        });
+      } catch {
+        // Best-effort — the page is going away.
+      }
+    };
+    window.addEventListener('pagehide', onPageHide);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      if (pending.current) flushRef.current();
+    };
+  }, [workspaceId]);
+
   async function sendToPipeline(idea: RecurringIdea) {
     const title = idea.title.trim();
     if (!title) return;
-    setPipeline((p) => ({ ...p, [idea.id]: { state: 'sending' } }));
+    setPipeline((p) => ({ ...p, [idea.id]: 'sending' }));
     try {
       const res = await fetch(`/api/workspaces/${workspaceId}/videos`, {
         method: 'POST',
@@ -66,51 +166,26 @@ export function StrategyEditor({
       });
       if (res.ok) {
         const { data } = await res.json();
-        setPipeline((p) => ({ ...p, [idea.id]: { state: 'sent', videoId: data?.id } }));
+        setPipeline((p) => {
+          const rest = { ...p };
+          delete rest[idea.id];
+          return rest;
+        });
+        if (data?.id) {
+          // Persist the link on the idea itself (rides the next auto-save),
+          // so "In pipeline" survives reloads and blocks duplicate sends.
+          setRecurringIdeas((prev) =>
+            prev.map((r) => (r.id === idea.id ? { ...r, videoId: data.id } : r))
+          );
+        }
+        toast.success('Added to the pipeline as an idea');
       } else {
-        setPipeline((p) => ({ ...p, [idea.id]: { state: 'error' } }));
+        setPipeline((p) => ({ ...p, [idea.id]: 'error' }));
       }
     } catch {
-      setPipeline((p) => ({ ...p, [idea.id]: { state: 'error' } }));
+      setPipeline((p) => ({ ...p, [idea.id]: 'error' }));
     }
   }
-
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Hold the freshest values so the debounced flush sends the latest snapshot.
-  const latest = useRef<WorkspaceStrategy>(initial);
-
-  const flush = useCallback(async () => {
-    if (!canEdit) return;
-    setSave('saving');
-    try {
-      const res = await fetch(`/api/workspaces/${workspaceId}/strategy`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ strategy: latest.current }),
-      });
-      setSave(res.ok ? 'saved' : 'error');
-    } catch {
-      setSave('error');
-    }
-  }, [workspaceId, canEdit]);
-
-  // Debounced auto-save on any edit (skip the initial mount).
-  const mounted = useRef(false);
-  useEffect(() => {
-    if (!mounted.current) {
-      mounted.current = true;
-      return;
-    }
-    if (!canEdit) return;
-    // Update inside the effect (never during render) so flush sends the latest.
-    latest.current = { pillars, recurringIdeas, notes };
-    // flush() sets 'saving' when it fires; the debounce keeps it off the keystroke path.
-    if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(flush, 1200);
-    return () => {
-      if (timer.current) clearTimeout(timer.current);
-    };
-  }, [pillars, recurringIdeas, notes, flush, canEdit]);
 
   return (
     <div className="max-w-3xl space-y-8">
@@ -231,8 +306,8 @@ export function StrategyEditor({
                 {canCreatePipeline && (
                   <PipelineButton
                     workspaceId={workspaceId}
+                    idea={idea}
                     state={pipeline[idea.id]}
-                    disabled={!idea.title.trim()}
                     accent={accent}
                     onClick={() => sendToPipeline(idea)}
                   />
@@ -332,6 +407,15 @@ function SaveWhisper({ state, onRetry }: { state: SaveState; onRetry: () => void
         Saved
       </span>
     );
+  if (state === 'conflict')
+    return (
+      <button
+        onClick={() => window.location.reload()}
+        className="text-xs text-destructive hover:underline"
+      >
+        Updated elsewhere — reload to get the latest
+      </button>
+    );
   return (
     <button onClick={onRetry} className="text-xs text-destructive hover:underline">
       Save failed — retry
@@ -339,32 +423,46 @@ function SaveWhisper({ state, onRetry }: { state: SaveState; onRetry: () => void
   );
 }
 
+function RemoveButton({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex-none mt-0.5 text-muted-foreground/50 hover:text-destructive transition-colors"
+      aria-label="Remove"
+    >
+      <Trash2 className="h-3.5 w-3.5" />
+    </button>
+  );
+}
+
 function PipelineButton({
   workspaceId,
+  idea,
   state,
-  disabled,
   accent,
   onClick,
 }: {
   workspaceId: string;
+  idea: RecurringIdea;
   state?: PipelineState;
-  disabled?: boolean;
   accent?: string | null;
   onClick: () => void;
 }) {
-  if (state?.state === 'sent') {
+  // Persisted on the idea — survives reloads and blocks duplicate sends.
+  if (idea.videoId) {
     return (
-      <a
-        href={state.videoId ? `/workspaces/${workspaceId}/videos/${state.videoId}` : undefined}
+      <Link
+        href={`/workspaces/${workspaceId}/videos/${idea.videoId}`}
         className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
       >
         <Check className="h-3.5 w-3.5" />
         In pipeline
-        {state.videoId && <ArrowUpRight className="h-3 w-3" />}
-      </a>
+        <ArrowUpRight className="h-3 w-3" />
+      </Link>
     );
   }
-  const sending = state?.state === 'sending';
+  const disabled = !idea.title.trim();
+  const sending = state === 'sending';
   return (
     <div className="flex items-center gap-2">
       <button
@@ -382,24 +480,12 @@ function PipelineButton({
         )}
         Send to pipeline
       </button>
-      {state?.state === 'error' && (
+      {state === 'error' && (
         <button onClick={onClick} className="text-xs text-destructive hover:underline">
           failed — retry
         </button>
       )}
     </div>
-  );
-}
-
-function RemoveButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex-none mt-0.5 text-muted-foreground/50 hover:text-destructive transition-colors"
-      aria-label="Remove"
-    >
-      <Trash2 className="h-3.5 w-3.5" />
-    </button>
   );
 }
 
