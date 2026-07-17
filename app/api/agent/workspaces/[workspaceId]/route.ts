@@ -40,17 +40,26 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         await getR2FileObjectMetadata(workspace.coverKey).catch(() => null)
       );
     }
-    const [total, published, archived, brandAssets] = await Promise.all([
+    const [total, published, archived, brandAssets, pillarGroups] = await Promise.all([
       db.video.count({ where: { project: { workspaceId } } }),
       db.video.count({ where: { project: { workspaceId }, status: 'PUBLISHED' } }),
       db.video.count({ where: { project: { workspaceId }, status: 'ARCHIVED' } }),
       db.workspaceAsset.count({ where: { workspaceId } }),
+      db.video.groupBy({
+        by: ['pillarId'],
+        where: { project: { workspaceId }, pillarId: { not: null } },
+        _count: { _all: true },
+      }),
     ]);
+    // Strategy feedback loop: videos produced per content pillar.
+    const pillarCounts: Record<string, number> = {};
+    for (const g of pillarGroups) if (g.pillarId) pillarCounts[g.pillarId] = g._count._all;
 
     return withCacheControl(
       successResponse({
         ...workspace,
         strategy: parseStrategy(workspace.strategy),
+        pillarCounts,
         audit: {
           hasCover: Boolean(workspace.coverKey),
           coverObjectExists,
@@ -159,7 +168,12 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
           recurringIdeas: 'recurringIdeas' in patch ? patch.recurringIdeas : cur.recurringIdeas,
           notes: 'notes' in patch ? patch.notes : cur.notes,
         });
-        data.strategy = { ...merged, rev: cur.rev + 1 } as unknown as Prisma.InputJsonValue;
+        data.strategy = {
+          ...merged,
+          rev: cur.rev + 1,
+          updatedAt: new Date().toISOString(),
+          updatedBy: 'Agent',
+        } as unknown as Prisma.InputJsonValue;
       }
     }
     if (Object.keys(data).length === 0) return apiErrors.badRequest('nothing to update');

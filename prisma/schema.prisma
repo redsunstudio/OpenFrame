@@ -376,6 +376,9 @@ model Video {
   videoType    VideoType   @default(LONGFORM)
   brief        String?     @db.Text
   thumbnailUrl String?
+  // Strategy feedback loop: which content pillar (Workspace.strategy pillars[].id)
+  // this video ladders up to. Plain string — pillars live in JSON, not a table.
+  pillarId     String?
 
   // Publish trail (filled by the push + the daily published-sync)
   zernioPostId   String?
@@ -407,6 +410,7 @@ model Video {
   @@index([status])
   @@index([projectId, status])
   @@index([projectId, updatedAt(sort: Desc)])
+  @@index([pillarId])
   @@map("videos")
 }
 

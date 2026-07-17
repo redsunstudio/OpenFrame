@@ -91,6 +91,10 @@ export async function POST(request: NextRequest) {
     const brief = typeof body?.brief === 'string' ? body.brief.trim() : '';
     const description = typeof body?.description === 'string' ? body.description.trim() : '';
     const videoType = typeof body?.videoType === 'string' ? body.videoType : 'LONGFORM';
+    const pillarId =
+      typeof body?.pillarId === 'string' && body.pillarId.length > 0 && body.pillarId.length <= 64
+        ? body.pillarId
+        : null;
     if (!workspaceId || !title) return apiErrors.badRequest('workspaceId and title are required');
     if (!(Object.values(VideoType) as string[]).includes(videoType)) {
       return apiErrors.badRequest(
@@ -133,6 +137,7 @@ export async function POST(request: NextRequest) {
         description: description || null,
         videoType: videoType as VideoType,
         status: 'IDEA',
+        pillarId,
         projectId: project.id,
         position: (last?.position ?? -1) + 1,
       },

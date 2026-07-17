@@ -46,6 +46,15 @@ export default async function StrategyPage({ params }: StrategyPageProps) {
   const canEdit = access.isOwner || access.isMember;
   const strategy = parseStrategy(workspace.strategy);
 
+  // Strategy feedback loop: videos produced per content pillar.
+  const pillarGroups = await db.video.groupBy({
+    by: ['pillarId'],
+    where: { project: { workspaceId }, pillarId: { not: null } },
+    _count: { _all: true },
+  });
+  const pillarCounts: Record<string, number> = {};
+  for (const g of pillarGroups) if (g.pillarId) pillarCounts[g.pillarId] = g._count._all;
+
   return (
     <div
       className="px-6 lg:px-8 py-8 w-full"
@@ -80,6 +89,7 @@ export default async function StrategyPage({ params }: StrategyPageProps) {
         canEdit={canEdit}
         canCreatePipeline={access.canEdit}
         accent={workspace.brandAccent}
+        pillarCounts={pillarCounts}
       />
     </div>
   );

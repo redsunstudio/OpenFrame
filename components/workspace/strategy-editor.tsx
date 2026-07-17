@@ -12,12 +12,30 @@ import {
   Loader2,
   Send,
   ArrowUpRight,
+  GripVertical,
+  Pencil,
+  Sparkles,
+  LayoutTemplate,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
-import type { ContentPillar, RecurringIdea, WorkspaceStrategy } from '@/lib/strategy';
+import { templateStrategy } from '@/lib/strategy';
+import type {
+  ContentPillar,
+  IdeaVideoType,
+  RecurringIdea,
+  WorkspaceStrategy,
+} from '@/lib/strategy';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error' | 'conflict';
 
@@ -28,11 +46,19 @@ interface StrategyEditorProps {
   /** Owner/admins can spawn a recurring idea into the pipeline as an IDEA item. */
   canCreatePipeline: boolean;
   accent?: string | null;
+  /** Videos produced per pillar id — the strategy feedback loop. */
+  pillarCounts: Record<string, number>;
 }
 
 type PipelineState = 'sending' | 'error';
 
-type Sections = Omit<WorkspaceStrategy, 'rev'>;
+type Sections = Omit<WorkspaceStrategy, 'rev' | 'updatedAt' | 'updatedBy'>;
+
+const TYPE_META: Record<IdeaVideoType, string> = {
+  PODCAST: '🎙️ Podcast',
+  LONGFORM: '🎬 Long-form',
+  SHORT: '📱 Short',
+};
 
 function newId(): string {
   try {
@@ -42,28 +68,64 @@ function newId(): string {
   }
 }
 
+/** Render plain text with URLs as real links — the read view earns its keep. */
+function Linkified({ text }: { text: string }) {
+  const parts = text.split(/(https?:\/\/[^\s<>"')]+)/g);
+  return (
+    <>
+      {parts.map((part, i) =>
+        /^https?:\/\//.test(part) ? (
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-primary underline underline-offset-2 hover:opacity-80 break-all"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {part}
+          </a>
+        ) : (
+          <span key={i}>{part}</span>
+        )
+      )}
+    </>
+  );
+}
+
+function formatUpdated(iso?: string): string | null {
+  if (!iso) return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleDateString(undefined, { day: 'numeric', month: 'short' });
+}
+
+// `accent` stays in the props contract but isn't read here — the page sets the
+// workspace brand as --primary, so text-primary/bg-primary classes carry it.
 export function StrategyEditor({
   workspaceId,
   initial,
   canEdit,
   canCreatePipeline,
-  accent,
+  pillarCounts,
 }: StrategyEditorProps) {
   const [pillars, setPillars] = useState<ContentPillar[]>(initial.pillars);
   const [recurringIdeas, setRecurringIdeas] = useState<RecurringIdea[]>(initial.recurringIdeas);
   const [notes, setNotes] = useState(initial.notes);
   const [save, setSave] = useState<SaveState>('idle');
   const [pipeline, setPipeline] = useState<Record<string, PipelineState>>({});
+  // Which card is in edit mode — 'notes' or an item id. One at a time.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [meta, setMeta] = useState({ updatedAt: initial.updatedAt, updatedBy: initial.updatedBy });
+  const [draftRequested, setDraftRequested] = useState(false);
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savedBadgeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  // Freshest sections for the debounced flush + unload paths.
   const latest = useRef<Sections>({
     pillars: initial.pillars,
     recurringIdeas: initial.recurringIdeas,
     notes: initial.notes,
   });
-  // Snapshot of the last successfully saved content — the dirty check.
   const lastSaved = useRef(
     JSON.stringify({
       pillars: initial.pillars,
@@ -71,9 +133,7 @@ export function StrategyEditor({
       notes: initial.notes,
     })
   );
-  // Optimistic-lock revision; bumped from each save response.
   const rev = useRef(initial.rev);
-  // True while an edit is awaiting a save (drives unmount/pagehide flushes).
   const pending = useRef(false);
 
   const flush = useCallback(async () => {
@@ -90,6 +150,9 @@ export function StrategyEditor({
       if (res.ok) {
         const { data } = await res.json().catch(() => ({ data: null }));
         if (typeof data?.strategy?.rev === 'number') rev.current = data.strategy.rev;
+        if (data?.strategy?.updatedAt) {
+          setMeta({ updatedAt: data.strategy.updatedAt, updatedBy: data.strategy.updatedBy });
+        }
         lastSaved.current = JSON.stringify(sections);
         pending.current = false;
         setSave('saved');
@@ -99,7 +162,6 @@ export function StrategyEditor({
           2000
         );
       } else if (res.status === 409) {
-        // Someone else saved since we loaded — stop writing, ask for a reload.
         pending.current = false;
         setSave('conflict');
       } else {
@@ -151,6 +213,47 @@ export function StrategyEditor({
     };
   }, [workspaceId]);
 
+  function removePillar(pillar: ContentPillar) {
+    const index = pillars.findIndex((p) => p.id === pillar.id);
+    setPillars((prev) => prev.filter((p) => p.id !== pillar.id));
+    setEditing(null);
+    toast(`Removed "${pillar.title || 'untitled pillar'}"`, {
+      action: {
+        label: 'Undo',
+        onClick: () =>
+          setPillars((prev) => {
+            const next = [...prev];
+            next.splice(Math.min(index, next.length), 0, pillar);
+            return next;
+          }),
+      },
+    });
+  }
+
+  function removeIdea(idea: RecurringIdea) {
+    const index = recurringIdeas.findIndex((r) => r.id === idea.id);
+    setRecurringIdeas((prev) => prev.filter((r) => r.id !== idea.id));
+    setEditing(null);
+    toast(`Removed "${idea.title || 'untitled idea'}"`, {
+      action: {
+        label: 'Undo',
+        onClick: () =>
+          setRecurringIdeas((prev) => {
+            const next = [...prev];
+            next.splice(Math.min(index, next.length), 0, idea);
+            return next;
+          }),
+      },
+    });
+  }
+
+  function reorder<T>(list: T[], from: number, to: number): T[] {
+    const next = [...list];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    return next;
+  }
+
   async function sendToPipeline(idea: RecurringIdea) {
     const title = idea.title.trim();
     if (!title) return;
@@ -162,6 +265,8 @@ export function StrategyEditor({
         body: JSON.stringify({
           title: title.slice(0, 200),
           brief: idea.notes?.trim() || undefined,
+          videoType: idea.videoType || 'LONGFORM',
+          pillarId: idea.pillarId || undefined,
         }),
       });
       if (res.ok) {
@@ -172,8 +277,6 @@ export function StrategyEditor({
           return rest;
         });
         if (data?.id) {
-          // Persist the link on the idea itself (rides the next auto-save),
-          // so "In pipeline" survives reloads and blocks duplicate sends.
           setRecurringIdeas((prev) =>
             prev.map((r) => (r.id === idea.id ? { ...r, videoId: data.id } : r))
           );
@@ -187,67 +290,180 @@ export function StrategyEditor({
     }
   }
 
-  return (
-    <div className="max-w-3xl space-y-8">
-      {canEdit && (
-        <div className="flex items-center justify-end -mb-4">
-          <SaveWhisper state={save} onRetry={flush} />
+  async function requestDraft() {
+    setDraftRequested(true);
+    try {
+      const res = await fetch(`/api/workspaces/${workspaceId}/strategy/draft-request`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        toast.success("Request sent — we'll draft it from your channel and let you know.");
+      } else {
+        setDraftRequested(false);
+        toast.error("Couldn't send the request — try again.");
+      }
+    } catch {
+      setDraftRequested(false);
+      toast.error("Couldn't send the request — try again.");
+    }
+  }
+
+  const isEmpty = pillars.length === 0 && recurringIdeas.length === 0 && notes.trim() === '';
+  const updated = formatUpdated(meta.updatedAt);
+  const pillarTitle = (id?: string) => pillars.find((p) => p.id === id)?.title?.trim() || null;
+
+  if (isEmpty && !editing) {
+    return (
+      <div className="max-w-3xl">
+        <div className="rounded-xl border border-dashed border-border/70 px-6 py-14 flex flex-col items-center text-center gap-4">
+          <Compass className="h-10 w-10 text-primary" aria-hidden />
+          <div className="space-y-1.5">
+            <h2 className="text-lg font-semibold">No strategy here yet</h2>
+            <p className="text-sm text-muted-foreground max-w-md">
+              Pillars, recurring formats and channel notes — the doc your ideas and quarterly
+              planning run from.
+            </p>
+          </div>
+          {canEdit ? (
+            <div className="flex flex-col sm:flex-row gap-2 mt-2">
+              <Button
+                onClick={() => {
+                  const tpl = templateStrategy();
+                  setPillars(tpl.pillars);
+                  setRecurringIdeas(tpl.recurringIdeas);
+                  toast.success('Template added — replace the examples with your own.');
+                }}
+              >
+                <LayoutTemplate className="h-4 w-4 mr-2" />
+                Start from a template
+              </Button>
+              <Button variant="outline" onClick={requestDraft} disabled={draftRequested}>
+                <Sparkles className="h-4 w-4 mr-2" />
+                {draftRequested ? 'Request sent ✓' : 'Draft it from my channel'}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted-foreground">The team hasn&apos;t logged it yet.</p>
+          )}
         </div>
-      )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-w-3xl space-y-10">
+      {/* Freshness + save state — the first question in any strategy meeting. */}
+      <div className="flex items-center justify-between -mb-5 min-h-5">
+        <p className="text-xs text-muted-foreground">
+          {updated ? (
+            <>
+              Updated {updated}
+              {meta.updatedBy ? ` · ${meta.updatedBy}` : ''}
+            </>
+          ) : null}
+        </p>
+        <div aria-live="polite" role="status">
+          {canEdit && <SaveWhisper state={save} onRetry={flush} />}
+        </div>
+      </div>
 
       {/* Content pillars */}
       <Section
         icon={Compass}
         title="Content pillars"
         blurb="The 3–5 recurring themes this channel is built on. Every video should ladder up to one."
-        accent={accent}
         onAdd={
           canEdit
-            ? () => setPillars((p) => [...p, { id: newId(), title: '', description: '' }])
+            ? () => {
+                const id = newId();
+                setPillars((p) => [...p, { id, title: '', description: '' }]);
+                setEditing(id);
+              }
             : undefined
         }
         addLabel="Add pillar"
-        empty={pillars.length === 0}
-        emptyText="No pillars yet. Add the core themes the channel keeps coming back to."
       >
-        <div className="grid gap-3 sm:grid-cols-2">
-          {pillars.map((pillar) => (
-            <Card key={pillar.id} className="overflow-hidden">
-              <CardContent className="p-3 space-y-2">
-                <div className="flex items-start gap-2">
-                  <AutoInput
-                    value={pillar.title}
-                    onChange={(v) =>
-                      setPillars((prev) =>
-                        prev.map((p) => (p.id === pillar.id ? { ...p, title: v } : p))
-                      )
-                    }
-                    placeholder="Pillar name"
-                    className="font-semibold text-sm"
-                    readOnly={!canEdit}
-                    maxLength={200}
-                  />
-                  {canEdit && (
-                    <RemoveButton
-                      onClick={() => setPillars((prev) => prev.filter((p) => p.id !== pillar.id))}
-                    />
-                  )}
-                </div>
-                <AutoTextarea
-                  value={pillar.description}
-                  onChange={(v) =>
+        <div className="space-y-1">
+          {pillars.map((pillar, index) =>
+            editing === pillar.id ? (
+              <div
+                key={pillar.id}
+                className="rounded-xl border border-primary/40 bg-muted/20 p-4 space-y-3"
+              >
+                <Input
+                  autoFocus
+                  value={pillar.title}
+                  onChange={(e) =>
                     setPillars((prev) =>
-                      prev.map((p) => (p.id === pillar.id ? { ...p, description: v } : p))
+                      prev.map((p) => (p.id === pillar.id ? { ...p, title: e.target.value } : p))
                     )
                   }
-                  placeholder="What it covers, why it wins, example angles…"
-                  readOnly={!canEdit}
-                  rows={3}
-                  maxLength={5000}
+                  onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
+                  placeholder="Pillar name"
+                  aria-label="Pillar name"
+                  maxLength={200}
+                  className="text-sm font-semibold"
                 />
-              </CardContent>
-            </Card>
-          ))}
+                <Textarea
+                  value={pillar.description}
+                  onChange={(e) =>
+                    setPillars((prev) =>
+                      prev.map((p) =>
+                        p.id === pillar.id ? { ...p, description: e.target.value } : p
+                      )
+                    )
+                  }
+                  onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
+                  placeholder="What it covers, why it wins, example angles…"
+                  aria-label={`Description for ${pillar.title || 'new pillar'}`}
+                  maxLength={5000}
+                  className="min-h-20"
+                />
+                <div className="flex items-center justify-between">
+                  <button
+                    onClick={() => removePillar(pillar)}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors p-1.5 -m-1.5"
+                    aria-label={`Remove ${pillar.title || 'untitled pillar'}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                  <Button size="sm" onClick={() => setEditing(null)}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <ReadRow
+                key={pillar.id}
+                canEdit={canEdit}
+                onEdit={() => setEditing(pillar.id)}
+                editLabel={`Edit pillar ${pillar.title || 'untitled'}`}
+                draggable={canEdit}
+                dragKey={`pillar:${index}`}
+                onDropIndex={(from) => setPillars((prev) => reorder(prev, from, index))}
+                dragPrefix="pillar"
+              >
+                <div className="flex items-baseline gap-2.5 flex-wrap">
+                  <h3 className="text-base font-semibold leading-snug">
+                    {pillar.title || (
+                      <span className="text-muted-foreground/60">Untitled pillar</span>
+                    )}
+                  </h3>
+                  {pillarCounts[pillar.id] ? (
+                    <span className="flex-none rounded-full border border-border/70 px-2 py-0.5 text-[11px] font-mono text-muted-foreground">
+                      {pillarCounts[pillar.id]} video{pillarCounts[pillar.id] === 1 ? '' : 's'}
+                    </span>
+                  ) : null}
+                </div>
+                {pillar.description && (
+                  <p className="mt-1 text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                    <Linkified text={pillar.description} />
+                  </p>
+                )}
+              </ReadRow>
+            )
+          )}
         </div>
       </Section>
 
@@ -256,65 +472,159 @@ export function StrategyEditor({
         icon={Repeat}
         title="Recurring ideas"
         blurb="Repeatable formats and series to keep making. Ideation pulls straight from this list."
-        accent={accent}
         onAdd={
           canEdit
-            ? () => setRecurringIdeas((r) => [...r, { id: newId(), title: '', notes: '' }])
+            ? () => {
+                const id = newId();
+                setRecurringIdeas((r) => [...r, { id, title: '', notes: '' }]);
+                setEditing(id);
+              }
             : undefined
         }
         addLabel="Add idea"
-        empty={recurringIdeas.length === 0}
-        emptyText="No recurring ideas yet. Add formats, series or angles worth repeating."
       >
-        <div className="space-y-2">
-          {recurringIdeas.map((idea) => (
-            <Card key={idea.id}>
-              <CardContent className="p-3 space-y-2">
-                <div className="flex items-start gap-2">
-                  <AutoInput
-                    value={idea.title}
-                    onChange={(v) =>
-                      setRecurringIdeas((prev) =>
-                        prev.map((r) => (r.id === idea.id ? { ...r, title: v } : r))
-                      )
-                    }
-                    placeholder="Idea / format name"
-                    className="font-medium text-sm"
-                    readOnly={!canEdit}
-                    maxLength={200}
-                  />
-                  {canEdit && (
-                    <RemoveButton
-                      onClick={() =>
-                        setRecurringIdeas((prev) => prev.filter((r) => r.id !== idea.id))
-                      }
-                    />
-                  )}
-                </div>
-                <AutoTextarea
-                  value={idea.notes}
-                  onChange={(v) =>
+        <div className="space-y-1">
+          {recurringIdeas.map((idea, index) =>
+            editing === idea.id ? (
+              <div
+                key={idea.id}
+                className="rounded-xl border border-primary/40 bg-muted/20 p-4 space-y-3"
+              >
+                <Input
+                  autoFocus
+                  value={idea.title}
+                  onChange={(e) =>
                     setRecurringIdeas((prev) =>
-                      prev.map((r) => (r.id === idea.id ? { ...r, notes: v } : r))
+                      prev.map((r) => (r.id === idea.id ? { ...r, title: e.target.value } : r))
                     )
                   }
-                  placeholder="Cadence, references, what makes it work…"
-                  readOnly={!canEdit}
-                  rows={2}
-                  maxLength={5000}
+                  onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
+                  placeholder="Idea / format name"
+                  aria-label="Idea name"
+                  maxLength={200}
+                  className="text-sm font-medium"
                 />
-                {canCreatePipeline && (
-                  <PipelineButton
-                    workspaceId={workspaceId}
-                    idea={idea}
-                    state={pipeline[idea.id]}
-                    accent={accent}
-                    onClick={() => sendToPipeline(idea)}
-                  />
-                )}
-              </CardContent>
-            </Card>
-          ))}
+                <Textarea
+                  value={idea.notes}
+                  onChange={(e) =>
+                    setRecurringIdeas((prev) =>
+                      prev.map((r) => (r.id === idea.id ? { ...r, notes: e.target.value } : r))
+                    )
+                  }
+                  onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
+                  placeholder="Cadence, references, what makes it work…"
+                  aria-label={`Notes for ${idea.title || 'new idea'}`}
+                  maxLength={5000}
+                  className="min-h-16"
+                />
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select
+                    value={idea.pillarId || 'none'}
+                    onValueChange={(v) =>
+                      setRecurringIdeas((prev) =>
+                        prev.map((r) =>
+                          r.id === idea.id ? { ...r, pillarId: v === 'none' ? undefined : v } : r
+                        )
+                      )
+                    }
+                  >
+                    <SelectTrigger aria-label="Pillar" size="sm">
+                      <SelectValue placeholder="Pillar" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">No pillar</SelectItem>
+                      {pillars.map((p) => (
+                        <SelectItem key={p.id} value={p.id}>
+                          {p.title || 'Untitled pillar'}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Select
+                    value={idea.videoType || 'LONGFORM'}
+                    onValueChange={(v) =>
+                      setRecurringIdeas((prev) =>
+                        prev.map((r) =>
+                          r.id === idea.id ? { ...r, videoType: v as IdeaVideoType } : r
+                        )
+                      )
+                    }
+                  >
+                    <SelectTrigger aria-label="Format" size="sm">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {(Object.keys(TYPE_META) as IdeaVideoType[]).map((t) => (
+                        <SelectItem key={t} value={t}>
+                          {TYPE_META[t]}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="flex-1" />
+                  <button
+                    onClick={() => removeIdea(idea)}
+                    className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-destructive transition-colors p-1.5 -m-1.5"
+                    aria-label={`Remove ${idea.title || 'untitled idea'}`}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                    Remove
+                  </button>
+                  <Button size="sm" onClick={() => setEditing(null)}>
+                    Done
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <ReadRow
+                key={idea.id}
+                canEdit={canEdit}
+                onEdit={() => setEditing(idea.id)}
+                editLabel={`Edit idea ${idea.title || 'untitled'}`}
+                draggable={canEdit}
+                dragKey={`idea:${index}`}
+                onDropIndex={(from) => setRecurringIdeas((prev) => reorder(prev, from, index))}
+                dragPrefix="idea"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-baseline gap-2 flex-wrap">
+                      <span className="text-sm font-medium">
+                        {idea.title || (
+                          <span className="text-muted-foreground/60">Untitled idea</span>
+                        )}
+                      </span>
+                      {idea.videoType && idea.videoType !== 'LONGFORM' && (
+                        <span className="flex-none text-[11px] text-muted-foreground">
+                          {TYPE_META[idea.videoType]}
+                        </span>
+                      )}
+                      {pillarTitle(idea.pillarId) && (
+                        <span className="flex-none rounded-full bg-primary/10 text-primary px-2 py-0.5 text-[11px]">
+                          {pillarTitle(idea.pillarId)}
+                        </span>
+                      )}
+                    </div>
+                    {idea.notes && (
+                      <p className="mt-0.5 text-sm leading-relaxed text-muted-foreground whitespace-pre-wrap">
+                        <Linkified text={idea.notes} />
+                      </p>
+                    )}
+                  </div>
+                  {canCreatePipeline && (
+                    <div className="flex-none pt-0.5" onClick={(e) => e.stopPropagation()}>
+                      <PipelineButton
+                        workspaceId={workspaceId}
+                        idea={idea}
+                        state={pipeline[idea.id]}
+                        onClick={() => sendToPipeline(idea)}
+                      />
+                    </div>
+                  )}
+                </div>
+              </ReadRow>
+            )
+          )}
         </div>
       </Section>
 
@@ -323,21 +633,131 @@ export function StrategyEditor({
         icon={StickyNote}
         title="Notes"
         blurb="Anything else — quarterly plan, positioning, audience, do/don't, links."
-        accent={accent}
       >
-        <Card>
-          <CardContent className="p-3">
-            <AutoTextarea
+        {editing === 'notes' ? (
+          <div className="rounded-xl border border-primary/40 bg-muted/20 p-4 space-y-3">
+            <Textarea
+              autoFocus
               value={notes}
-              onChange={setNotes}
+              onChange={(e) => setNotes(e.target.value)}
+              onKeyDown={(e) => e.key === 'Escape' && setEditing(null)}
               placeholder="Free-form strategy notes…"
-              readOnly={!canEdit}
-              rows={8}
+              aria-label="Strategy notes"
               maxLength={20000}
+              className="min-h-40"
             />
-          </CardContent>
-        </Card>
+            <div className="flex justify-end">
+              <Button size="sm" onClick={() => setEditing(null)}>
+                Done
+              </Button>
+            </div>
+          </div>
+        ) : (
+          <ReadRow
+            canEdit={canEdit}
+            onEdit={() => setEditing('notes')}
+            editLabel="Edit notes"
+            draggable={false}
+          >
+            {notes.trim() ? (
+              <p className="text-sm leading-relaxed text-foreground/80 whitespace-pre-wrap">
+                <Linkified text={notes} />
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground/60">
+                {canEdit ? 'Click to add notes…' : 'No notes yet.'}
+              </p>
+            )}
+          </ReadRow>
+        )}
       </Section>
+    </div>
+  );
+}
+
+/**
+ * A read-mode block: renders content as document prose; for editors it is
+ * click-to-edit (keyboard included) with a hover pencil, and draggable to
+ * reorder within its list.
+ */
+function ReadRow({
+  children,
+  canEdit,
+  onEdit,
+  editLabel,
+  draggable,
+  dragKey,
+  dragPrefix,
+  onDropIndex,
+}: {
+  children: React.ReactNode;
+  canEdit: boolean;
+  onEdit: () => void;
+  editLabel: string;
+  draggable?: boolean;
+  dragKey?: string;
+  dragPrefix?: string;
+  onDropIndex?: (fromIndex: number) => void;
+}) {
+  const [dragOver, setDragOver] = useState(false);
+  const interactive = canEdit;
+  return (
+    <div
+      role={interactive ? 'button' : undefined}
+      tabIndex={interactive ? 0 : undefined}
+      aria-label={interactive ? editLabel : undefined}
+      onClick={interactive ? onEdit : undefined}
+      onKeyDown={
+        interactive
+          ? (e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                onEdit();
+              }
+            }
+          : undefined
+      }
+      draggable={draggable && !!dragKey}
+      onDragStart={
+        draggable && dragKey
+          ? (e) => e.dataTransfer.setData(`text/kk-strategy-${dragPrefix}`, dragKey)
+          : undefined
+      }
+      onDragOver={
+        draggable && onDropIndex
+          ? (e) => {
+              if (e.dataTransfer.types.includes(`text/kk-strategy-${dragPrefix}`)) {
+                e.preventDefault();
+                setDragOver(true);
+              }
+            }
+          : undefined
+      }
+      onDragLeave={() => setDragOver(false)}
+      onDrop={
+        draggable && onDropIndex
+          ? (e) => {
+              setDragOver(false);
+              const data = e.dataTransfer.getData(`text/kk-strategy-${dragPrefix}`);
+              const from = Number(data.split(':')[1]);
+              if (Number.isInteger(from)) onDropIndex(from);
+            }
+          : undefined
+      }
+      className={cn(
+        'group relative rounded-lg px-3 py-2.5 -mx-3 transition-colors',
+        interactive &&
+          'cursor-pointer hover:bg-muted/30 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/50',
+        dragOver && 'ring-1 ring-primary/60 bg-muted/30'
+      )}
+    >
+      {interactive && (
+        <span className="absolute right-2 top-2.5 flex items-center gap-1 opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity text-muted-foreground/60">
+          {draggable && <GripVertical className="h-3.5 w-3.5" aria-hidden />}
+          <Pencil className="h-3.5 w-3.5" aria-hidden />
+        </span>
+      )}
+      {children}
     </div>
   );
 }
@@ -346,32 +766,26 @@ function Section({
   icon: Icon,
   title,
   blurb,
-  accent,
   onAdd,
   addLabel,
-  empty,
-  emptyText,
   children,
 }: {
   icon: typeof Compass;
   title: string;
   blurb: string;
-  accent?: string | null;
   onAdd?: () => void;
   addLabel?: string;
-  empty?: boolean;
-  emptyText?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="space-y-3">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex items-start justify-between gap-3 border-b border-border/60 pb-2">
         <div>
           <h2 className="flex items-center gap-2 text-lg font-semibold">
-            <Icon className="h-4 w-4" style={{ color: accent || undefined }} />
+            <Icon className="h-4 w-4 text-primary" aria-hidden />
             {title}
           </h2>
-          <p className="text-sm text-muted-foreground mt-0.5">{blurb}</p>
+          <p className="text-xs text-muted-foreground mt-0.5">{blurb}</p>
         </div>
         {onAdd && (
           <Button variant="outline" size="sm" onClick={onAdd} className="flex-none">
@@ -380,13 +794,7 @@ function Section({
           </Button>
         )}
       </div>
-      {empty ? (
-        <p className="text-sm text-muted-foreground/70 border border-dashed border-border/60 rounded-lg px-4 py-6 text-center">
-          {emptyText}
-        </p>
-      ) : (
-        children
-      )}
+      {children}
     </section>
   );
 }
@@ -423,37 +831,22 @@ function SaveWhisper({ state, onRetry }: { state: SaveState; onRetry: () => void
   );
 }
 
-function RemoveButton({ onClick }: { onClick: () => void }) {
-  return (
-    <button
-      onClick={onClick}
-      className="flex-none mt-0.5 text-muted-foreground/50 hover:text-destructive transition-colors"
-      aria-label="Remove"
-    >
-      <Trash2 className="h-3.5 w-3.5" />
-    </button>
-  );
-}
-
 function PipelineButton({
   workspaceId,
   idea,
   state,
-  accent,
   onClick,
 }: {
   workspaceId: string;
   idea: RecurringIdea;
   state?: PipelineState;
-  accent?: string | null;
   onClick: () => void;
 }) {
-  // Persisted on the idea — survives reloads and blocks duplicate sends.
   if (idea.videoId) {
     return (
       <Link
         href={`/workspaces/${workspaceId}/videos/${idea.videoId}`}
-        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors whitespace-nowrap"
       >
         <Check className="h-3.5 w-3.5" />
         In pipeline
@@ -464,13 +857,12 @@ function PipelineButton({
   const disabled = !idea.title.trim();
   const sending = state === 'sending';
   return (
-    <div className="flex items-center gap-2">
+    <span className="inline-flex items-center gap-2">
       <button
         type="button"
         onClick={onClick}
         disabled={disabled || sending}
-        className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-        style={!disabled && !sending && accent ? { color: accent } : undefined}
+        className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:opacity-80 transition-opacity disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap p-1 -m-1"
         title={disabled ? 'Give the idea a name first' : 'Create an IDEA item in the pipeline'}
       >
         {sending ? (
@@ -485,70 +877,6 @@ function PipelineButton({
           failed — retry
         </button>
       )}
-    </div>
-  );
-}
-
-function AutoInput({
-  value,
-  onChange,
-  placeholder,
-  className,
-  readOnly,
-  maxLength,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  className?: string;
-  readOnly?: boolean;
-  maxLength?: number;
-}) {
-  return (
-    <input
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      readOnly={readOnly}
-      maxLength={maxLength}
-      className={cn(
-        'flex-1 min-w-0 bg-transparent outline-none placeholder:text-muted-foreground/50',
-        !readOnly &&
-          'rounded px-1.5 py-1 -mx-1.5 focus:bg-muted/40 focus:ring-1 focus:ring-primary/30 transition',
-        className
-      )}
-    />
-  );
-}
-
-function AutoTextarea({
-  value,
-  onChange,
-  placeholder,
-  readOnly,
-  rows = 3,
-  maxLength,
-}: {
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  readOnly?: boolean;
-  rows?: number;
-  maxLength?: number;
-}) {
-  return (
-    <textarea
-      value={value}
-      onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder}
-      readOnly={readOnly}
-      rows={rows}
-      maxLength={maxLength}
-      className={cn(
-        'w-full resize-y bg-transparent text-sm leading-relaxed outline-none placeholder:text-muted-foreground/50',
-        !readOnly &&
-          'rounded-md border border-border/50 bg-muted/20 px-2.5 py-1.5 focus:border-primary/50 focus:ring-1 focus:ring-primary/30 transition'
-      )}
-    />
+    </span>
   );
 }

@@ -19,12 +19,19 @@ export interface ContentPillar {
   description: string;
 }
 
+export type IdeaVideoType = 'PODCAST' | 'LONGFORM' | 'SHORT';
+const IDEA_VIDEO_TYPES: readonly IdeaVideoType[] = ['PODCAST', 'LONGFORM', 'SHORT'];
+
 export interface RecurringIdea {
   id: string;
   title: string;
   notes: string;
   /** Set when the idea was sent to the pipeline — keeps the link across reloads. */
   videoId?: string;
+  /** Optional link to the pillar this format ladders up to. */
+  pillarId?: string;
+  /** The format this idea produces — used when spawning it into the pipeline. */
+  videoType?: IdeaVideoType;
 }
 
 export interface WorkspaceStrategy {
@@ -32,6 +39,10 @@ export interface WorkspaceStrategy {
   recurringIdeas: RecurringIdea[];
   notes: string;
   rev: number;
+  /** ISO stamp + display name of the last write — "is this current?" is the
+   *  first question in every quarterly meeting. Set server-side on save. */
+  updatedAt?: string;
+  updatedBy?: string;
 }
 
 // Guardrails — keep the blob bounded so a client paste can't bloat the row.
@@ -71,6 +82,7 @@ export function parseStrategy(raw: unknown): WorkspaceStrategy {
       })
     : [];
 
+  const pillarIds = new Set(pillars.map((p) => p.id));
   const recurringIdeas: RecurringIdea[] = Array.isArray(obj.recurringIdeas)
     ? obj.recurringIdeas.slice(0, MAX_ITEMS).map((r, i) => {
         const o = (r ?? {}) as Record<string, unknown>;
@@ -79,6 +91,11 @@ export function parseStrategy(raw: unknown): WorkspaceStrategy {
           title: clampString(o.title, MAX_TITLE),
           notes: clampString(o.notes, MAX_BODY),
           ...(isId(o.videoId) ? { videoId: o.videoId } : {}),
+          // A pillar link only survives if the pillar still exists.
+          ...(isId(o.pillarId) && pillarIds.has(o.pillarId) ? { pillarId: o.pillarId } : {}),
+          ...(IDEA_VIDEO_TYPES.includes(o.videoType as IdeaVideoType)
+            ? { videoType: o.videoType as IdeaVideoType }
+            : {}),
         };
       })
     : [];
@@ -93,7 +110,49 @@ export function parseStrategy(raw: unknown): WorkspaceStrategy {
     recurringIdeas,
     notes: clampString(obj.notes, MAX_NOTES),
     rev,
+    ...(typeof obj.updatedAt === 'string' ? { updatedAt: obj.updatedAt.slice(0, 40) } : {}),
+    ...(typeof obj.updatedBy === 'string' ? { updatedBy: obj.updatedBy.slice(0, 120) } : {}),
   };
+}
+
+/** Starter content for the empty state — clearly marked as examples to replace. */
+export function templateStrategy(): Pick<WorkspaceStrategy, 'pillars' | 'recurringIdeas'> {
+  const pillars: ContentPillar[] = [
+    {
+      id: 'tpl_p1',
+      title: 'Authority pillar (example)',
+      description:
+        'The topic you can go deeper on than anyone else — the reason subscribers trust the channel. Replace this with yours: what it covers, why you win it, 2-3 example angles.',
+    },
+    {
+      id: 'tpl_p2',
+      title: 'Discovery pillar (example)',
+      description:
+        'The searchable, evergreen questions your audience types into YouTube. These bring in new viewers who then binge the authority content.',
+    },
+    {
+      id: 'tpl_p3',
+      title: 'Personality pillar (example)',
+      description:
+        'The behind-the-scenes / opinion / story content that turns viewers into fans. Lower production, higher connection.',
+    },
+  ];
+  const recurringIdeas: RecurringIdea[] = [
+    {
+      id: 'tpl_r1',
+      title: 'Weekly format (example)',
+      notes:
+        'A repeatable series with a fixed hook structure — name it, so viewers ask for the next one.',
+      pillarId: 'tpl_p1',
+    },
+    {
+      id: 'tpl_r2',
+      title: 'Shorts series (example)',
+      notes: '60-second cuts of the strongest single moment from each long-form video.',
+      pillarId: 'tpl_p2',
+    },
+  ];
+  return { pillars, recurringIdeas };
 }
 
 /**

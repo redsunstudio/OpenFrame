@@ -57,7 +57,13 @@ export async function PUT(req: NextRequest, { params }: Ctx) {
       return apiErrors.conflict('Strategy was updated elsewhere — reload to get the latest');
     }
 
-    const strategy = { ...incoming, rev: current.rev + 1 };
+    const strategy = {
+      ...incoming,
+      rev: current.rev + 1,
+      // Freshness meta — "is this current?" is the first quarterly-meeting question.
+      updatedAt: new Date().toISOString(),
+      updatedBy: session.user.name?.trim() || session.user.email || 'Unknown',
+    };
     await db.workspace.update({
       where: { id: workspaceId },
       data: { strategy: strategy as unknown as Prisma.InputJsonValue },

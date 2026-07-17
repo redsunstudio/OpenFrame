@@ -41,6 +41,10 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     const brief = typeof body?.brief === 'string' ? body.brief.trim() : '';
     const description = typeof body?.description === 'string' ? body.description.trim() : '';
     const videoType = typeof body?.videoType === 'string' ? body.videoType : 'LONGFORM';
+    const pillarId =
+      typeof body?.pillarId === 'string' && body.pillarId.length > 0 && body.pillarId.length <= 64
+        ? body.pillarId
+        : null;
     if (!title) return apiErrors.badRequest('Title is required');
     if (title.length > 200) return apiErrors.badRequest('Title must be 200 characters or fewer');
     if (!(Object.values(VideoType) as string[]).includes(videoType)) {
@@ -80,6 +84,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
         description: description || null,
         videoType: videoType as VideoType,
         status: 'IDEA',
+        pillarId,
         projectId: project.id,
         position: (last?.position ?? -1) + 1,
       },
