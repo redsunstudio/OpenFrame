@@ -1,17 +1,21 @@
 import Link from 'next/link';
-import { MonitorPlay, Inbox, Palette, BarChart3, Youtube } from 'lucide-react';
+import { MonitorPlay, Inbox, Palette, BarChart3, Youtube, Compass } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { hasModule, KREATORKIT_MODULES, type KreatorKitModule } from '@/lib/workspace-features';
 
 // Modules without an entry here (e.g. 'posts') are capabilities, not tabs.
 const MODULE_META: Partial<
-  Record<KreatorKitModule, { label: string; href: (id: string) => string; icon: typeof MonitorPlay }>
+  Record<
+    KreatorKitModule,
+    { label: string; href: (id: string) => string; icon: typeof MonitorPlay }
+  >
 > = {
   review: { label: 'Pipeline', href: (id) => `/workspaces/${id}`, icon: MonitorPlay },
   handoff: { label: 'Footage Handoff', href: (id) => `/workspaces/${id}/handoff`, icon: Inbox },
   published: { label: 'Published', href: (id) => `/workspaces/${id}/published`, icon: Youtube },
   assets: { label: 'Brand assets', href: (id) => `/workspaces/${id}/assets`, icon: Palette },
   reports: { label: 'Reports', href: (id) => `/workspaces/${id}/reports`, icon: BarChart3 },
+  strategy: { label: 'Strategy', href: (id) => `/workspaces/${id}/strategy`, icon: Compass },
 };
 
 interface ModuleNavProps {

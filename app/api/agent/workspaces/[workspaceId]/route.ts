@@ -5,6 +5,7 @@ import { apiErrors, successResponse, withCacheControl } from '@/lib/api-response
 import { isAgentRequest } from '@/lib/agent-auth';
 import { getR2FileObjectMetadata } from '@/lib/r2';
 import { logError } from '@/lib/logger';
+import { parseStrategy } from '@/lib/strategy';
 
 interface RouteParams {
   params: Promise<{ workspaceId: string }>;
@@ -27,6 +28,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         brandAccent: true,
         brandLogoUrl: true,
         publishing: true,
+        strategy: true,
         coverKey: true,
       },
     });
@@ -48,6 +50,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     return withCacheControl(
       successResponse({
         ...workspace,
+        strategy: parseStrategy(workspace.strategy),
         audit: {
           hasCover: Boolean(workspace.coverKey),
           coverObjectExists,
@@ -136,6 +139,14 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
       }
       data.brandLogoUrl = body.brandLogoUrl;
     }
+    if ('strategy' in body) {
+      // Whole-object replace (sanitized/clamped). Lets the quarterly-strategy
+      // meeting write pillars/recurring ideas/notes straight into the workspace.
+      data.strategy =
+        body.strategy === null
+          ? Prisma.DbNull
+          : (parseStrategy(body.strategy) as unknown as Prisma.InputJsonValue);
+    }
     if (Object.keys(data).length === 0) return apiErrors.badRequest('nothing to update');
 
     const workspace = await db.workspace.update({
@@ -148,6 +159,7 @@ export async function PATCH(request: NextRequest, { params }: RouteParams) {
         brandAccent: true,
         brandLogoUrl: true,
         publishing: true,
+        strategy: true,
       },
     });
     return withCacheControl(successResponse(workspace), 'private, no-store');

@@ -208,6 +208,9 @@ model Workspace {
 
   // Publish wiring — e.g. { "zernio": { "youtubeAccountId": "..." } }
   publishing   Json?
+
+  // KreatorKit: channel strategy the creator logs (pillars, recurring ideas, notes)
+  strategy     Json?
   
   // Ownership
   ownerId     String
