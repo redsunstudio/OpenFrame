@@ -55,7 +55,14 @@ import {
   type VideoSource,
 } from '@/lib/video-providers';
 import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { withThumbnailCacheBust } from '@/lib/thumbnail-url';
 import { cn } from '@/lib/utils';
+
+// A freshly-uploaded Bunny thumbnail can 404 briefly while it transcodes, so a
+// first miss is often transient — retry a bounded number of times, then show a
+// terminal "unavailable" tile instead of spinning forever.
+const MAX_THUMB_RETRIES = 2;
+const THUMB_RETRY_DELAY_MS = 10000;
 
 interface VideoCardProps {
   video: {
@@ -91,6 +98,25 @@ export function VideoCard({
   const router = useRouter();
   const [imgError, setImgError] = useState(false);
   const [retryKey, setRetryKey] = useState(0);
+  const [retryCount, setRetryCount] = useState(0);
+  const [thumbFailed, setThumbFailed] = useState(false);
+
+  // Transient errors retry with a correctly cache-busted URL; once retries are
+  // exhausted we give up and render the fallback tile (no infinite spinner loop).
+  const handleThumbError = () => {
+    const next = retryCount + 1;
+    setRetryCount(next);
+    if (next > MAX_THUMB_RETRIES) {
+      setThumbFailed(true);
+      setImgError(false);
+    } else {
+      setImgError(true);
+      window.setTimeout(() => {
+        setRetryKey(Date.now());
+        setImgError(false);
+      }, THUMB_RETRY_DELAY_MS);
+    }
+  };
 
   // Edit dialog
   const [showEditDialog, setShowEditDialog] = useState(false);
@@ -261,38 +287,36 @@ export function VideoCard({
         >
           {selectionMode ? (
             <div className="relative aspect-video bg-muted overflow-hidden">
-              {imgError ? (
+              {thumbFailed || !resolvedThumbnailUrl ? (
+                <div className="absolute inset-0 flex items-center justify-center bg-muted/80 text-xs text-muted-foreground font-medium">
+                  Thumbnail unavailable
+                </div>
+              ) : imgError ? (
                 <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                   <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
                   <span className="text-xs text-muted-foreground font-medium">
                     Processing thumbnail...
                   </span>
                 </div>
-              ) : resolvedThumbnailUrl ? (
+              ) : (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img
-                  src={`${resolvedThumbnailUrl}${retryKey ? `?t=${retryKey}` : ''}`}
+                  src={withThumbnailCacheBust(resolvedThumbnailUrl, retryKey)}
                   alt={video.title}
                   className="absolute inset-0 w-full h-full object-cover"
-                  onError={() => {
-                    setImgError(true);
-                    setTimeout(() => {
-                      setRetryKey(Date.now());
-                      setImgError(false);
-                    }, 10000);
-                  }}
+                  onError={handleThumbError}
                 />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-muted/80 text-xs text-muted-foreground font-medium">
-                  Thumbnail unavailable
-                </div>
               )}
             </div>
           ) : (
             <Link href={`/projects/${projectId}/videos/${video.id}`}>
               {/* Thumbnail */}
               <div className="relative aspect-video bg-muted overflow-hidden">
-                {imgError ? (
+                {thumbFailed || !resolvedThumbnailUrl ? (
+                  <div className="absolute inset-0 flex items-center justify-center bg-muted/80 text-xs text-muted-foreground font-medium">
+                    Thumbnail unavailable
+                  </div>
+                ) : imgError ? (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/80">
                     <Loader2 className="h-8 w-8 animate-spin text-muted-foreground mb-2" />
                     <span className="text-xs text-muted-foreground font-medium">
@@ -302,27 +326,16 @@ export function VideoCard({
                       Video may already be playable
                     </span>
                   </div>
-                ) : resolvedThumbnailUrl ? (
+                ) : (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={`${resolvedThumbnailUrl}${retryKey ? `?t=${retryKey}` : ''}`}
+                    src={withThumbnailCacheBust(resolvedThumbnailUrl, retryKey)}
                     alt={video.title}
                     className="absolute inset-0 w-full h-full object-cover transition-transform group-hover:scale-105"
-                    onError={() => {
-                      setImgError(true);
-                      // Check again after 10 seconds in case Bunny is still processing
-                      setTimeout(() => {
-                        setRetryKey(Date.now());
-                        setImgError(false);
-                      }, 10000);
-                    }}
+                    onError={handleThumbError}
                   />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center bg-muted/80 text-xs text-muted-foreground font-medium">
-                    Thumbnail unavailable
-                  </div>
                 )}
-                {!imgError && (
+                {!imgError && !thumbFailed && resolvedThumbnailUrl && (
                   <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
                     <Play className="h-12 w-12 text-white" fill="white" />
                   </div>

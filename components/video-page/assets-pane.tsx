@@ -42,6 +42,7 @@ import {
 } from '@/components/video-page/image-upload-utils';
 import { useCommentMedia } from '@/components/video-page/hooks/use-comment-media';
 import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { withThumbnailCacheBust } from '@/lib/thumbnail-url';
 import { cn } from '@/lib/utils';
 
 const MAX_AUDIO_UPLOAD_SIZE = 10 * 1024 * 1024; // 10MB
@@ -1050,7 +1051,7 @@ export const AssetsPane = memo(function AssetsPane({
     const isReadyToPlay = !!bunnyReadyByAssetId[asset.id];
     const hasThumbnailLoadError = !!bunnyThumbnailLoadErrorByAssetId[asset.id];
     const thumbnailSrc = asset.thumbnailUrl
-      ? `${asset.thumbnailUrl}${retryKey ? `?t=${retryKey}` : ''}`
+      ? withThumbnailCacheBust(asset.thumbnailUrl, retryKey)
       : null;
     const showThumbnailImage = !!thumbnailSrc && !hasThumbnailLoadError;
 

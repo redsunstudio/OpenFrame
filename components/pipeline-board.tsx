@@ -23,6 +23,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
+import { ThumbnailImage } from '@/components/thumbnail-image';
 import { VIDEO_TYPES, typeMeta, typeOptionLabel } from '@/lib/video-type';
 
 export const PIPELINE_STAGES = [
@@ -101,11 +102,7 @@ function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
     size === 'row'
       ? 'h-9 w-16 rounded-md object-cover border border-white/10 flex-none'
       : 'w-full aspect-video rounded-lg object-cover border border-white/10';
-  if (src) {
-    // eslint-disable-next-line @next/next/no-img-element
-    return <img src={src} alt="" className={cls} loading="lazy" />;
-  }
-  return (
+  const placeholder = (
     <div
       className={cn(
         cls,
@@ -116,6 +113,7 @@ function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
       🎬
     </div>
   );
+  return <ThumbnailImage src={src} alt="" className={cls} fallback={placeholder} />;
 }
 
 function StagePill({ status }: { status: string }) {
