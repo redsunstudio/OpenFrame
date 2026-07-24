@@ -112,11 +112,10 @@ function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
     <div
       className={cn(
         cls,
-        'bg-white/[0.04] flex items-center justify-center text-muted-foreground',
-        size === 'row' ? 'text-sm' : 'text-2xl'
+        'bg-gradient-to-br from-white/[0.06] to-white/[0.015] flex items-center justify-center text-muted-foreground/50'
       )}
     >
-      🎬
+      <Film className={size === 'row' ? 'h-3.5 w-3.5' : 'h-6 w-6'} strokeWidth={1.5} />
     </div>
   );
   return <ThumbnailImage src={src} alt="" className={cls} fallback={placeholder} />;
