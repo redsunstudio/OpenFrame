@@ -3,7 +3,18 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
-import { Film, Kanban, Lightbulb, List, Loader2, MessageSquare, Play, Plus } from 'lucide-react';
+import {
+  Check,
+  Film,
+  Kanban,
+  Lightbulb,
+  Link2,
+  List,
+  Loader2,
+  MessageSquare,
+  Play,
+  Plus,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -119,6 +130,75 @@ function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
     </div>
   );
   return <ThumbnailImage src={src} alt="" className={cls} fallback={placeholder} />;
+}
+
+// Grab the client-facing review link for a cut and copy it to the clipboard.
+// Reuses the item's existing COMMENT share link so links already sent to a client
+// keep working; only mints one if none exists yet.
+function CopyReviewLink({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
+  if (!v.projectId) return null;
+
+  const copy = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (busy) return;
+    setBusy(true);
+    try {
+      const base = `/api/projects/${v.projectId}/videos/${v.id}/share`;
+      const existing = await fetch(base);
+      let url: string | null = existing.ok
+        ? ((await existing.json())?.data?.shareUrl ?? null)
+        : null;
+      if (!url) {
+        const created = await fetch(base, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({}),
+        });
+        if (!created.ok) {
+          throw new Error(
+            (await created.json())?.error?.message || 'Could not create a review link'
+          );
+        }
+        url = (await created.json())?.data?.shareUrl ?? null;
+      }
+      if (!url) throw new Error('No review link available');
+      await navigator.clipboard.writeText(url);
+      setCopied(true);
+      toast.success('Review link copied — paste it to the client');
+      setTimeout(() => setCopied(false), 1500);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not copy the review link');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cls =
+    size === 'row'
+      ? 'flex-none inline-flex items-center gap-1 h-7 rounded-md border px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors'
+      : 'inline-flex items-center gap-1 h-6 rounded-md border px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors';
+
+  return (
+    <button
+      type="button"
+      onClick={copy}
+      disabled={busy}
+      className={cls}
+      title="Copy the client review link"
+    >
+      {busy ? (
+        <Loader2 className="h-3 w-3 animate-spin" />
+      ) : copied ? (
+        <Check className="h-3 w-3 text-green-400" />
+      ) : (
+        <Link2 className="h-3 w-3" />
+      )}
+      {size === 'row' ? (copied ? 'Copied' : 'Copy link') : null}
+    </button>
+  );
 }
 
 function StagePill({ status }: { status: string }) {
@@ -343,13 +423,16 @@ export function PipelineBoard({
                   )}
                   {rowMeta(v)}
                   {reviewHref(v) && (
-                    <Link
-                      href={reviewHref(v)!}
-                      className="flex-none inline-flex items-center gap-1 h-7 rounded-md border px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                    >
-                      <Play className="h-3 w-3" />
-                      Review
-                    </Link>
+                    <>
+                      <Link
+                        href={reviewHref(v)!}
+                        className="flex-none inline-flex items-center gap-1 h-7 rounded-md border px-2 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                      >
+                        <Play className="h-3 w-3" />
+                        Review
+                      </Link>
+                      <CopyReviewLink v={v} size="row" />
+                    </>
                   )}
                   {canEdit ? (
                     <Select
@@ -436,13 +519,16 @@ export function PipelineBoard({
                   <div className="flex items-center gap-3 mt-2">
                     {rowMeta(v)}
                     {reviewHref(v) && (
-                      <Link
-                        href={reviewHref(v)!}
-                        className="ml-auto inline-flex items-center gap-1 h-6 rounded-md border px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
-                      >
-                        <Play className="h-3 w-3" />
-                        Review
-                      </Link>
+                      <div className="ml-auto flex items-center gap-1">
+                        <Link
+                          href={reviewHref(v)!}
+                          className="inline-flex items-center gap-1 h-6 rounded-md border px-1.5 text-[11px] font-medium text-muted-foreground hover:bg-accent hover:text-foreground transition-colors"
+                        >
+                          <Play className="h-3 w-3" />
+                          Review
+                        </Link>
+                        <CopyReviewLink v={v} size="card" />
+                      </div>
                     )}
                   </div>
                   {canEdit && (
