@@ -24,7 +24,13 @@ import {
 } from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 import { ThumbnailImage } from '@/components/thumbnail-image';
+import { resolvePublicBunnyCdnHostname } from '@/lib/bunny-cdn';
+import { resolveThumbnailUrl } from '@/lib/thumbnail-url';
 import { VIDEO_TYPES, typeMeta, typeOptionLabel } from '@/lib/video-type';
+
+// Bunny poster thumbnails are stored against a shared host that must be rewritten
+// to this library's pull-zone host before they will load (see resolveThumbnailUrl).
+const BUNNY_CDN_HOSTNAME = resolvePublicBunnyCdnHostname();
 
 export const PIPELINE_STAGES = [
   { key: 'IDEA', label: 'Idea', emoji: '💡' },
@@ -97,7 +103,7 @@ interface PipelineBoardProps {
 }
 
 function Thumb({ v, size }: { v: PipelineVideo; size: 'row' | 'card' }) {
-  const src = v.itemThumbnailUrl || v.thumbnailUrl || null;
+  const src = resolveThumbnailUrl(v.itemThumbnailUrl || v.thumbnailUrl, BUNNY_CDN_HOSTNAME);
   const cls =
     size === 'row'
       ? 'h-9 w-16 rounded-md object-cover border border-white/10 flex-none'

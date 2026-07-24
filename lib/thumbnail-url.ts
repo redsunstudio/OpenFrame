@@ -13,3 +13,29 @@ export function withThumbnailCacheBust(url: string, key: number): string {
   const separator = url.includes('?') ? '&' : '?';
   return `${url}${separator}t=${key}`;
 }
+
+/**
+ * Resolve a stored thumbnail URL for rendering. Bunny Stream poster thumbnails are
+ * persisted against the shared `vz-thumbnail.b-cdn.net` host, which does not serve
+ * a given library's frames — the client must swap in that library's own pull-zone
+ * host (NEXT_PUBLIC_BUNNY_CDN_URL, via resolvePublicBunnyCdnHostname()). Without
+ * this rewrite the pipeline board rendered every Bunny poster as a broken image.
+ * Relative proxy paths (`/api/videos/...`) and any other host pass through
+ * unchanged.
+ */
+export function resolveThumbnailUrl(
+  url: string | null | undefined,
+  bunnyCdnHostname: string | null
+): string | null {
+  if (!url) return null;
+  try {
+    const parsed = new URL(url);
+    if (parsed.hostname === 'vz-thumbnail.b-cdn.net' && bunnyCdnHostname) {
+      parsed.hostname = bunnyCdnHostname;
+      return parsed.toString();
+    }
+    return parsed.toString();
+  } catch {
+    return url;
+  }
+}
